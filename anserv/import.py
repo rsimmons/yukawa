@@ -18,8 +18,12 @@ parser = argparse.ArgumentParser()
 
 subparsers = parser.add_subparsers(dest='command')
 
-parser_add_yt_playlist = subparsers.add_parser('add_yt_playlist')
-parser_add_yt_playlist.add_argument('--id', required=True)
+parser_add_yt_source = subparsers.add_parser('add_yt_source')
+parser_add_yt_source.add_argument('--url', required=True)
+parser_add_yt_source.add_argument('--duration_max', type=int)
+
+parser_update_yt_source = subparsers.add_parser('update_yt_source')
+parser_update_yt_source.add_argument('--source_id', type=int, required=True)
 
 parser_import_frags = subparsers.add_parser('import_frags')
 parser_import_frags.add_argument('--number', type=int, required=True)
@@ -47,23 +51,14 @@ def analyze_ja(text):
 def format_yt_video_url(id):
     return f'https://www.youtube.com/watch?v={id}'
 
-def format_yt_playlist_url(id):
-    return f'https://www.youtube.com/playlist?list={id}'
-
 def add_yt_thumbnail(thumbs):
-    thumb = thumbs[-1]
-    IMAGE_WIDTH = 336
-    IMAGE_HEIGHT = 188
-    assert thumb['width'] == IMAGE_WIDTH
-    assert thumb['height'] == IMAGE_HEIGHT
+    thumb = thumbs[-1] # this seems to be the best thumbnail for both playlists and channels, which have different thumbnail sets
     image_url = thumb['url']
     parsed = urlparse(image_url)
-    image_ext = os.path.splitext(parsed.path)[1][1:]
-    assert image_ext in ['jpg', 'png']
     image_data = requests.get(image_url).content
 
     image_md5 = hashlib.md5(image_data).hexdigest()
-    c.execute('INSERT INTO image (extension, md5, data, width, height) VALUES (?, ?, ?, ?, ?)', (image_ext, image_md5, image_data, IMAGE_WIDTH, IMAGE_HEIGHT))
+    c.execute('INSERT INTO image (md5, data) VALUES (?, ?)', (image_md5, image_data))
     return c.lastrowid
 
 def add_yt_video(info):
@@ -98,6 +93,9 @@ def add_yt_video(info):
     with open(audio_fn, 'rb') as audio_file:
         audio_data = audio_file.read()
 
+    duration = info['duration']
+    assert duration == int(duration)
+
     # do speech recognition
     openai.api_key = os.getenv('OPENAI_API_KEY')
 
@@ -130,22 +128,53 @@ def add_yt_video(info):
 
     # insert a new piece row
     print(f'inserting piece row for video {url}')
-    c.execute('INSERT INTO piece (url, kind, title, image_id, audio_id, stt_method, text_format, text, analysis, time_fetched, time_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (url, 'video', info['title'], image_id, audio_id, 'openai-api-whisper-1', 'vtt', transcript, analysis_json, current_time, current_time))
+    c.execute('INSERT INTO piece (url, kind, title, image_id, audio_id, duration, stt_method, text_format, text, analysis, time_fetched, time_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (url, 'video', info['title'], image_id, audio_id, duration, 'openai-api-whisper-1', 'vtt', transcript, analysis_json, current_time, current_time))
     piece_id = c.lastrowid
 
     conn.commit()
 
     return piece_id
 
-def add_yt_playlist(id):
-    playlist_url = format_yt_playlist_url(id)
+def add_yt_source(url, filter_obj):
+    # TODO: ensure url is canonical url for playlist or channel videos tab
 
+    with yt_dlp.YoutubeDL({
+        'extract_flat': 'in_playlist',
+        'playlistend': 0,
+    }) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    c.execute('BEGIN')
+
+    image_id = add_yt_thumbnail(info['thumbnails'])
+
+    filter_json = json.dumps(filter_obj, ensure_ascii=False, sort_keys=True) if filter_obj else None
+    c.execute('INSERT INTO source (url, filter, kind, title, image_id, time_updated) VALUES (?, ?, "video", ?, ?, NULL)', (url, filter_json, info['title'], image_id))
+    source_id = c.lastrowid
+
+    conn.commit()
+
+    _update_yt_source(source_id, url, filter_obj)
+
+def update_yt_source(source_id):
+    c.execute('SELECT url, filter FROM source WHERE id = ?', (source_id,))
+    source_row = c.fetchone()
+    if source_row is None:
+        raise Exception(f'source id {source_id} does not exist')
+
+    url = source_row[0]
+    filter_obj = json.loads(source_row[1])
+
+    _update_yt_source(source_id, url, filter_obj)
+
+def _update_yt_source(source_id, url, filter_obj):
     vid_infos = []
     with yt_dlp.YoutubeDL({
         'extract_flat': 'in_playlist',
-        'playlistend': 20,
+        'playlistend': 200,
     }) as ydl:
-        info = ydl.extract_info(playlist_url, download=False)
+        info = ydl.extract_info(url, download=False)
+        # print(json.dumps(info, indent=2, ensure_ascii=False))
         for vid_info in info['entries']:
             if vid_info['_type'] != 'url':
                 continue
@@ -153,24 +182,15 @@ def add_yt_playlist(id):
                 continue
             if vid_info['availability'] == 'subscriber_only':
                 continue
+
+            # apply filter
+            if filter_obj and 'duration_max' in filter_obj:
+                if vid_info['duration'] > filter_obj['duration_max']:
+                    print(f'skipping video {vid_info["url"]} because duration {vid_info["duration"]} > {filter_obj["duration_max"]}')
+                    continue
+
             vid_infos.append(vid_info)
-    print(f'found {len(vid_infos)} videos in playlist {playlist_url}')
-
-    # check if we already have a source row for this playlist url
-    c.execute('SELECT id FROM source WHERE url = ?', (playlist_url,))
-    source_row = c.fetchone()
-
-    if source_row:
-        source_id = source_row[0]
-    else:
-        c.execute('BEGIN')
-
-        image_id = add_yt_thumbnail(info['thumbnails'])
-
-        c.execute('INSERT INTO source (url, kind, title, image_id, time_updated) VALUES (?, "video", ?, ?, NULL)', (playlist_url, info['title'], image_id))
-        source_id = c.lastrowid
-
-        conn.commit()
+    print(f'listed {len(vid_infos)} videos from {url}')
 
     with yt_dlp.YoutubeDL({
         'format': 'bestaudio'
@@ -191,14 +211,21 @@ def add_yt_playlist(id):
                 piece_id = add_yt_video(vid_info)
 
                 # insert piece_source row
-                print(f'inserting piece_source row for video {vid_url} source {playlist_url}')
+                print(f'inserting piece_source row for video {vid_url} source {url}')
                 c.execute('BEGIN')
                 c.execute('INSERT INTO piece_source (piece_id, source_id) VALUES (?, ?)', (piece_id, source_id))
                 conn.commit()
 
     # TODO: set time_updated
 
-if args.command == 'add_yt_playlist':
-    add_yt_playlist(args.id)
+if args.command == 'add_yt_source':
+    filter_obj = {}
+    if args.duration_max is not None:
+        filter_obj['duration_max'] = args.duration_max
+    filter_obj = filter_obj or None
+
+    add_yt_source(args.url, filter_obj)
+elif args.command == 'update_yt_source':
+    update_yt_source(args.source_id)
 else:
     raise Exception('invalid command')

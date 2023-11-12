@@ -1,7 +1,8 @@
 -- e.g. a Netflix series or YouTube channel/playlist
 CREATE TABLE source (
   id INTEGER PRIMARY KEY,
-  url TEXT NOT NULL UNIQUE, -- canonicalized
+  url TEXT NOT NULL, -- canonicalized
+  filter TEXT, -- JSON of object with filter parameters, e.g. {"duration_max": 120}
   kind TEXT NOT NULL, -- "video", "audio", etc.
   title TEXT NOT NULL, -- title of the source
   image_id INTEGER, -- id of the thumbnail image file in the image table. NULL if the source does not have an image
@@ -17,6 +18,7 @@ CREATE TABLE piece (
   title TEXT NOT NULL, -- title of the piece
   image_id INTEGER, -- id of the thumbnail image file in the image table. NULL if the piece does not have an image
   audio_id INTEGER, -- id of the audio file in the audio table. NULL if the piece did not have audio
+  duration INTEGER, -- duration of the piece in seconds. NULL if not audio or video
   stt_method TEXT, -- speech to text. a string representing how text was derived from the speech audio. might be something like "human" or "youtube-auto" or "openai-api-whisper-large-v2". can be NULL if the piece was originally text
   text_format TEXT NOT NULL, -- format of the text column, e.g. "vtt"
   text TEXT NOT NULL, -- the full text(-equivalent) of the piece, e.g. a subtitle file in VTT format
@@ -41,9 +43,6 @@ CREATE TABLE audio (
 
 CREATE table image (
   id INTEGER PRIMARY KEY,
-  extension TEXT NOT NULL, -- e.g. "jpg" or "png"
   md5 TEXT NOT NULL, -- hex MD5 hash of image data
-  data BLOB NOT NULL, -- the raw image data
-  width INTEGER NOT NULL,
-  height INTEGER NOT NULL
+  data BLOB NOT NULL -- the raw image data
 );
