@@ -4,7 +4,7 @@ class CommonConfig(object):
     AUTH_TOKEN_EXPIRATION = 10*60
 
     AUTH_EMAIL_SUBJECT = 'Log in to Yukawa'
-    AUTH_EMAIL_SENDER = 'Yukawa <russ+yukawa@rsimmons.org>'
+    AUTH_EMAIL_SENDER = 'Yukawa <russ@rsimmons.org>'
 
 env = os.environ.get('FLASK_ENV')
 print(f'FLASK_ENV is {env!r}')
@@ -30,6 +30,7 @@ elif env == 'production':
 
         MAIL_ENABLED = True
         MAIL_LOGGED = False
+        POSTMARK_SERVER_TOKEN = os.environ['POSTMARK_SERVER_TOKEN']
 
         AUTH_KEY = os.environ['AUTH_KEY']
         AUTH_URL_PREFIX = 'http://example.com/auth?token='

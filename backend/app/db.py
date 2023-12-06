@@ -23,5 +23,5 @@ user = Table('user', metadata,
     Column('email', String(255), nullable=False),
     Column('created', Integer, nullable=False),
     Column('login_count', Integer, nullable=False),
-    Column('last_login', Integer, nullable=False),
+    Column('last_login', Integer, nullable=True),
 )

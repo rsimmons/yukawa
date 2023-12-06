@@ -39,7 +39,6 @@ def login():
                     email=email,
                     created=current_time,
                     login_count=0,
-                    last_login=current_time,
                 )
             )
             user_id = result.inserted_primary_key[0]
@@ -62,7 +61,7 @@ def login():
     send_email(
         subject=app.config['AUTH_EMAIL_SUBJECT'],
         sender=app.config['AUTH_EMAIL_SENDER'],
-        recipients=[email],
+        recipient=email,
         text_body=text_body,
         html_body=html_body,
     )

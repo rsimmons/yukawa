@@ -1,20 +1,29 @@
 import json
-from flask_mail import Message
+import requests
 
-from app import app, mail, log
+from app import app, log
 
-def send_email(subject, sender, recipients, text_body, html_body):
+def send_email(subject, sender, recipient, text_body, html_body):
     if app.config['MAIL_ENABLED']:
-        with app.app_context():
-            msg = Message(subject, sender=sender, recipients=recipients)
-            msg.body = text_body
-            msg.html = html_body
-            mail.send(msg)
+        requests.post('https://api.postmarkapp.com/email',
+            headers={
+                'Accept': 'application/json',
+                'X-Postmark-Server-Token': app.config['POSTMARK_SERVER_TOKEN'],
+            },
+            json={
+                'From': sender,
+                'To': recipient,
+                'Subject': subject,
+                'TextBody': text_body,
+                'HtmlBody': html_body,
+                'MessageStream': 'yukawa-prod-transactional',
+            },
+        )
 
     if app.config['MAIL_LOGGED']:
         email_json = json.dumps({
             'sender': sender,
-            'recipients': recipients,
+            'recipient': recipient,
             'subject': subject,
             'text_body': text_body,
             'html_body': html_body,
