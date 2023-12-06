@@ -32,7 +32,7 @@ elif env == 'production':
         MAIL_LOGGED = False
 
         AUTH_KEY = os.environ['AUTH_KEY']
-        # AUTH_URL_PREFIX =
+        AUTH_URL_PREFIX = 'http://example.com/auth?token='
 
         SESSION_KEY = os.environ['SESSION_KEY']
 else:
