@@ -1,3 +1,3 @@
 To log in to Yukawa, follow this link. It expires in {{ exp }}.
 
-{{ url_for('auth', token=token, _external=True) }}
+{{ url }}

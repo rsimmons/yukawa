@@ -9,12 +9,6 @@ def ping_db():
     with engine.connect() as conn:
         return conn.execute(text('select 1')).scalar()
 
-user = Table('user', metadata,
-    Column('id', Integer, primary_key=True),
-    Column('email', String(255), nullable=False),
-)
-
-
 def print_ddl():
     from sqlalchemy import create_mock_engine
 
@@ -23,3 +17,8 @@ def print_ddl():
 
     engine = create_mock_engine(app.config['DB_URL'], dump)
     metadata.create_all(engine, checkfirst=False)
+
+user = Table('user', metadata,
+    Column('id', Integer, primary_key=True),
+    Column('email', String(255), nullable=False),
+)

@@ -1,11 +1,10 @@
 import time
-from flask import request, jsonify
+from flask import request, jsonify, render_template
 import jwt
 import humanize
 
-from app import app, log
+from app import app, log, db
 from app.email import send_email
-from app.db import engine, user
 
 AUTH_TOKEN_EXPIRATION = 10*60
 
@@ -27,13 +26,13 @@ def login():
     # create or load user
     with db.engine.connect() as conn:
         result = conn.execute(
-            user.select().where(user.c.email == email)
+            db.user.select().where(db.user.c.email == email)
         ).fetchone()
 
     if result is None:
         with db.engine.begin() as conn:
             result = conn.execute(
-                user.insert().values(email=email)
+                db.user.insert().values(email=email)
             )
             user_id = result.inserted_primary_key[0]
     else:
@@ -41,16 +40,23 @@ def login():
 
     # create auth token
     auth_token = jwt.encode({
-        'user_id': user_id,
-        'exp': time.time() + app.config['AUTH_TOKEN_EXPIRATION'],
+        'u': user_id,
+        'exp': int(time.time() + app.config['AUTH_TOKEN_EXPIRATION']),
     }, app.config['AUTH_KEY'], algorithm='HS256')
+
+    # note that this URL goes to the client, not this backend
+    auth_url = app.config['AUTH_URL_PREFIX'] + auth_token
 
     # send email with link containing auth token
     exp_str = humanize.precisedelta(app.config['AUTH_TOKEN_EXPIRATION'])
-    text_body = render_template('email/auth.txt', token=auth_token, exp=exp_str)
-    html_body = render_template('email/auth.html', token=auth_token, exp=exp_str)
+    text_body = render_template('email/auth.txt', url=auth_url, exp=exp_str)
+    html_body = render_template('email/auth.html', url=auth_url, exp=exp_str)
     send_email(
-        sub
+        subject=app.config['AUTH_EMAIL_SUBJECT'],
+        sender=app.config['AUTH_EMAIL_SENDER'],
+        recipients=[email],
+        text_body=text_body,
+        html_body=html_body,
     )
 
     return jsonify({
@@ -61,6 +67,27 @@ def login():
 def auth():
     req = request.get_json()
 
+    token = req['token']
+
+    try:
+        payload = jwt.decode(token, app.config['AUTH_KEY'], algorithms=['HS256'])
+    except jwt.exceptions.DecodeError:
+        return jsonify({
+            'status': 'invalid token',
+        })
+    except jwt.exceptions.ExpiredSignatureError:
+        return jsonify({
+            'status': 'token expired',
+        })
+
+    user_id = payload['u']
+
+    # create session token for user_id and return it
+    session_token = jwt.encode({
+        'u': user_id,
+    }, app.config['SESSION_KEY'], algorithm='HS256')
+
     return jsonify({
         'status': 'ok',
+        'token': session_token,
     })
