@@ -11,6 +11,7 @@ print(f'FLASK_ENV is {env!r}')
 if env == 'development':
     class Config(CommonConfig):
         DB_URL = f'postgresql+psycopg://postgres@localhost/yukawa'
+        DB_ECHO = True
 
         MAIL_ENABLED = False
         MAIL_LOGGED = True

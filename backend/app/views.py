@@ -1,22 +1,21 @@
-from app import app, log
-from app.email import send_email
+from flask import jsonify, g
+
+from app import app
+from app.auth import require_session
 from app.db import ping_db
 
 @app.route('/')
 def hello_world():
     return '<p>Hello, World!</p>'
 
-@app.route('/ping')
+@app.route('/ping_db')
 def ping():
     return f'<p>pong: {ping_db()}</p>'
 
-@app.route('/mail')
-def mail():
-    send_email(
-        subject='Test',
-        sender='russ@rsimmons.org',
-        recipients=['russ+test@rsimmons.org'],
-        text_body='test 123',
-        html_body='<p>test 123 html</p>',
-    )
-    return '<p>sent?</p>'
+@app.route('/user')
+@require_session
+def user():
+    return jsonify({
+        'status': 'ok',
+        'user_id': g.user_id,
+    })
