@@ -8,7 +8,7 @@ from app.db import ping_db
 def hello_world():
     return '<p>Hello, World!</p>'
 
-@app.route('/ping_db')
+@app.route('/ping')
 def ping():
     return f'<p>pong: {ping_db()}</p>'
 
