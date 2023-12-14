@@ -1,15 +1,16 @@
 import os
+import sys
 import datetime
 import subprocess
 import tempfile
 import pprint
+import warnings
 
 import srt
 import whisper
-from sudachipy import tokenizer, dictionary
 import diff_match_patch as dmp
 
-sudachi_tokenizer_obj = dictionary.Dictionary().create()
+from ja import JapaneseAnalyzer
 
 print('loading Whisper model...')
 whisper_model = whisper.load_model('large-v3')
@@ -18,13 +19,7 @@ print('done')
 FORCE_BREAK_TIME = 2
 MAX_CLIP_LENGTH = 10
 
-def sudachi_get_morphemes(text):
-    return sudachi_tokenizer_obj.tokenize(text, tokenizer.Tokenizer.SplitMode.B)
-
 def extract_audio(vid_fn, start_time, end_time, audio_fn):
-    # we have to re-encode to get precise start/end times
-    # cmdline = ['ffmpeg', '-ss', str(start_time.total_seconds()), '-accurate_seek', '-i', vid_fn, '-t', str((end_time - start_time).total_seconds()), '-map', '0:a:0', '-acodec', 'aac', '-y', audio_fn]
-
     # extract to wav to avoid re-encoding
     cmdline = ['ffmpeg', '-ss', str(start_time.total_seconds()), '-accurate_seek', '-i', vid_fn, '-t', str((end_time - start_time).total_seconds()), '-map', '0:a:0', '-ac', '1', '-acodec', 'pcm_s16le', '-y', audio_fn]
     with open(os.devnull, 'w') as devnull:
@@ -57,6 +52,15 @@ def divide_group(group):
         splits = [group[:biggest_gap_index+1], group[biggest_gap_index+1:]]
     else:
         # there are no time gaps, so divide as evenly as possible by character counts
+        print('BEGIN NOGAP', 'duration', (group[-1].end - group[0].start).total_seconds(), 'SUBS:')
+        for sub in group:
+            print('--')
+            print(sub.content)
+        print('--')
+        print('END NOGAP')
+        print()
+        print()
+
         total_chars = sum(len(sub.content) for sub in group)
         half_chars = 0.5*total_chars
         closest_chars = None
@@ -75,61 +79,23 @@ def divide_group(group):
         result.extend(divide_group(split))
     return result
 
-MORPHEME_SUBSTS = {
-    ('ネェ', 'ね'): 'ネ',
-    ('ネエ', 'ね'): 'ネ',
-    ('ネッ', 'ね'): 'ネ',
-    ('ネェ', 'ねえ'): 'ネ',
-    ('ネエ', 'ねえ'): 'ネ',
-    ('ネッ', 'ねえ'): 'ネ',
-
-    ('ワァ', 'わあ'): 'ワア',
-
-    ('ア', 'あっ'): 'アッ',
-
-    ('デショ', 'です'): 'デショウ',
-
-    ('ナアニ', '何'): 'ナニ',
-    ('ナァニ', '何'): 'ナニ',
-
-    ('サッ', 'さっ'): 'サア',
-}
-
-def get_morpheme_token(m):
-    subst_key = (m.reading_form(), m.normalized_form())
-    if subst_key in MORPHEME_SUBSTS:
-        rf = MORPHEME_SUBSTS[subst_key]
-    else:
-        rf = m.reading_form()
-
-    return rf
-
-def ignore_morpheme(m):
-    return (m.part_of_speech()[0] in ['補助記号', '空白'])
-
-def ja_make_tokenstr(text):
-    text = text.replace('～', '') # phonetic prolongation mark, just messes up analysis
-
-    morphemes = sudachi_get_morphemes(text)
-    return ' '.join(get_morpheme_token(m) for m in morphemes if not ignore_morpheme(m))
-
-def text_similarity(make_tokenstr, text_a, text_b):
-    tokenstr_a = make_tokenstr(text_a)
-    tokenstr_b = make_tokenstr(text_b)
+def text_similarity(analyzer, text_a, text_b):
+    tokenstr_a = analyzer.make_tokenstr(text_a)
+    tokenstr_b = analyzer.make_tokenstr(text_b)
 
     dmp_obj = dmp.diff_match_patch()
     diffs = dmp_obj.diff_main(tokenstr_a, tokenstr_b, False)
     # diffs is a list of (op, text) tuples
 
-    print('text_a:')
-    print(text_a)
-    print('tokenstr_a:')
-    print(tokenstr_a)
-    print('text_b:')
-    print(text_b)
-    print('tokenstr_b:')
-    print(tokenstr_b)
-    print('diffs:', diffs)
+    # print('text_a:')
+    # print(text_a)
+    # print('tokenstr_a:')
+    # print(tokenstr_a)
+    # print('text_b:')
+    # print(text_b)
+    # print('tokenstr_b:')
+    # print(tokenstr_b)
+    # print('diffs:', diffs)
 
     match_char_count = 0
     diff_char_count = 0
@@ -142,7 +108,7 @@ def text_similarity(make_tokenstr, text_a, text_b):
 
     return sim
 
-def process(vid_fn, sub_fn):
+def process(vid_fn, sub_fn, analyzer):
     with open(sub_fn, 'r', encoding='utf-8') as sub_file:
         sub_data = sub_file.read()
 
@@ -162,32 +128,41 @@ def process(vid_fn, sub_fn):
         coarse_groups.append(group)
 
     sims = []
-    for group in coarse_groups:
-        print('--------')
-        for clip_subs in divide_group(group):
-            clip_start = clip_subs[0].start
-            clip_end = clip_subs[-1].end
-            dur = clip_end - clip_start
-            print('----', dur.total_seconds())
-            for sub in clip_subs:
-                print(sub.content.strip())
+    try:
+        for group in coarse_groups:
+            for clip_subs in divide_group(group):
+                clip_start = clip_subs[0].start
+                clip_end = clip_subs[-1].end
+                dur = clip_end - clip_start
+                print('BEGIN CLIP', 'duration', dur.total_seconds())
+                print('SUBS')
                 print('--')
+                for sub in clip_subs:
+                    print(sub.content)
+                    print('--')
 
-            with tempfile.NamedTemporaryFile(suffix='.wav', dir='.') as audio_file:
-                audio_fn = audio_file.name
-                extract_audio(vid_fn, clip_start, clip_end, audio_fn)
-                whisper_result = whisper_model.transcribe(audio_fn, language='ja', word_timestamps=True, initial_prompt='映画の字幕です。')
-                # pprint.pprint(whisper_result)
+                with tempfile.NamedTemporaryFile(suffix='.wav', dir='.') as audio_file:
+                    audio_fn = audio_file.name
+                    extract_audio(vid_fn, clip_start, clip_end, audio_fn)
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings('ignore', 'FP16 is not supported on CPU; using FP32 instead')
+                        whisper_result = whisper_model.transcribe(audio_fn, language='ja', initial_prompt='映画の字幕です。')
+                    # pprint.pprint(whisper_result)
 
-                human_text = '\n'.join(sub.content.strip() for sub in clip_subs)
+                human_text = '\n'.join(sub.content for sub in clip_subs)
                 asr_text = whisper_result['text']
 
-                sim = text_similarity(ja_make_tokenstr, human_text, asr_text)
-                sims.append(sim)
-                print('similarity:', sim)
+                print('ASR TEXT:', asr_text)
 
+                sim = text_similarity(analyzer, human_text, asr_text)
+                sims.append(sim)
+                print('SIMILARITY:', sim)
+
+                print('END CLIP')
                 print()
                 print()
+    except KeyboardInterrupt:
+        print('INTERRUPTED')
 
     print('average similarity:', sum(sims) / len(sims))
     for thresh in [0.9, 0.8, 0.5]:
@@ -195,4 +170,5 @@ def process(vid_fn, sub_fn):
 
 # TODO: don't update candidate split index if first sub ends with continuation arrow
 
-process('SpiritedAway.mp4', 'SpiritedAway.srt')
+ja_analyzer = JapaneseAnalyzer()
+process('SpiritedAway.mp4', 'SpiritedAway.srt', ja_analyzer)
