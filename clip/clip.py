@@ -107,81 +107,6 @@ def get_morpheme_token(m):
 def ignore_morpheme(m):
     return (m.part_of_speech()[0] in ['補助記号', '空白'])
 
-# def make_word_timing_difftext(whisper_result):
-#     result_lines = []
-#
-#     for segment in whisper_result['segments']:
-#         morphemes = sudachi_get_morphemes(segment['text'])
-#         timings = segment['words']
-#
-#         # sanity check that word timing texts concat to segment
-#         concat_timing_text = ''
-#         for timing in timings:
-#             concat_timing_text += timing['word']
-#         assert concat_timing_text == segment['text'], 'word timing texts do not concat to segment text'
-#
-#         # sanity check that morpheme texts concat to segment text
-#         concat_morpheme_text = ''
-#         for morpheme in morphemes:
-#             concat_morpheme_text += morpheme.surface()
-#         assert concat_morpheme_text == segment['text'], 'morpheme texts do not concat to segment text'
-#
-#         morpheme_index = 0
-#         timing_index = 0
-#         while True:
-#             finished_morphemes = (morpheme_index == len(morphemes))
-#             finished_timings = (timing_index == len(timings))
-#             if finished_morphemes and finished_timings:
-#                 break
-#             if finished_morphemes or finished_timings:
-#                 assert False # should not be possible
-#
-#             result_lines.append(f'#{timings[timing_index]["start"]}')
-#
-#             accum_morpheme_text = morphemes[morpheme_index].surface()
-#             accum_morpheme_lines = []
-#             if not ignore_morpheme(morphemes[morpheme_index]):
-#                 accum_morpheme_lines.append(get_morpheme_difftext_line(morphemes[morpheme_index]))
-#             accum_timing_text = timings[timing_index]['word']
-#
-#             while True:
-#                 if accum_morpheme_text == accum_timing_text:
-#                     result_lines.extend(accum_morpheme_lines)
-#                     result_lines.append(f'#{timings[timing_index]["end"]}')
-#                     morpheme_index += 1
-#                     timing_index += 1
-#                     break
-#                 elif accum_morpheme_text.startswith(accum_timing_text):
-#                     timing_index += 1
-#                     accum_timing_text += timings[timing_index]['word']
-#                 elif accum_timing_text.startswith(accum_morpheme_text):
-#                     morpheme_index += 1
-#                     accum_morpheme_text += morphemes[morpheme_index].surface()
-#                     if not ignore_morpheme(morphemes[morpheme_index]):
-#                         accum_morpheme_lines.append(get_morpheme_difftext_line(morphemes[morpheme_index]))
-#                 else:
-#                     assert False
-#
-#     return ''.join(result_lines)
-
-# def make_human_sub_difftext(subs):
-#     combined_text = ''
-#     for sub in subs:
-#         combined_text += sub.content.strip().replace('\n', ' ')
-#
-#     morphemes = sudachi_get_morphemes(combined_text)
-#
-#     result_lines = []
-#     accum_morpheme_text = ''
-#     for morpheme in morphemes:
-#         result_lines.append(f'@{morpheme.begin()}')
-#         accum_morpheme_text += morpheme.surface()
-#         if not ignore_morpheme(morpheme):
-#             result_lines.append(get_morpheme_difftext_line(morpheme))
-#     assert accum_morpheme_text == combined_text
-#
-#     return ''.join(line + '\n' for line in result_lines)
-
 def ja_make_tokenstr(text):
     text = text.replace('～', '') # phonetic prolongation mark, just messes up analysis
 
@@ -235,27 +160,6 @@ def process(vid_fn, sub_fn):
         prev_end = sub.end
     if group:
         coarse_groups.append(group)
-
-    # for group in coarse_groups:
-    #     dur = group[-1].end - group[0].start
-    #     print('---', dur.total_seconds())
-    #     for sub in group:
-    #         print(sub.content)
-    #     print()
-
-    #     with tempfile.NamedTemporaryFile(suffix='.wav', dir='.') as audio_file:
-    #         audio_fn = audio_file.name
-    #         extract_audio(vid_fn, group[0].start, group[-1].end, audio_fn)
-    #         whisper_result = whisper_model.transcribe(audio_fn, language='ja', word_timestamps=True, initial_prompt='映画の字幕です。', verbose=True)
-    #         pprint.pprint(whisper_result)
-
-    #         timing_difftext = make_word_timing_difftext(whisper_result)
-    #         print('timing_difftext:')
-    #         print(timing_difftext)
-
-    #         human_sub_difftext = make_human_sub_difftext(group)
-    #         print('human_sub_difftext:')
-    #         print(human_sub_difftext)
 
     sims = []
     for group in coarse_groups:
