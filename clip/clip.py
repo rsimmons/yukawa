@@ -14,7 +14,9 @@ import diff_match_patch as dmp
 from ja import JapaneseAnalyzer
 
 FORCE_BREAK_TIME = 2
-MAX_CLIP_LENGTH = 10
+MAX_CLIP_LENGTH = 10 # does not include margins
+IDEAL_MARGIN = 0.5 # this is also the maximum, may end up being less
+MIN_AFTER_MARGIN = 0.1
 
 def extract_audio(vid_fn, start_time, end_time, audio_fn):
     # extract to wav to avoid re-encoding
@@ -49,14 +51,16 @@ def extract_video(vid_fn, start_time, end_time, out_fn):
         subprocess.check_call(cmdline, stderr=devnull)
 
 # a group is a list of adjacent subtitles
-# returns a flat list of new groups
-def divide_group(group):
-    # print('divide_group', group)
+# returns a flat list of new groups (sequences of contiguous subtitles),
+# each group a dict with keys 'subs', 'margin_before', 'margin_after',
+# both margins in seconds indicating how much speech-free time should be
+# available before/after to extend the clip time beyond the sub times
+def divide_group(group, margin_before, margin_after):
     assert len(group) > 0
 
     # if below total time/character thresholds, keep group as is
     if (group[-1].end - group[0].start) < datetime.timedelta(seconds=MAX_CLIP_LENGTH):
-        return [group]
+        return [{'subs': group, 'margin_before': margin_before, 'margin_after': margin_after}]
 
     if len(group) == 1:
         assert False, 'single subtitle cue is too big to be a clip'
@@ -97,9 +101,11 @@ def divide_group(group):
         splits = [group[:closest_chars_index+1], group[closest_chars_index+1:]]
 
     # recursively divide each split
+    assert len(splits) == 2
+    time_between = (splits[1][0].start - splits[0][-1].end).total_seconds()
     result = []
-    for split in splits:
-        result.extend(divide_group(split))
+    result.extend(divide_group(splits[0], margin_before, time_between))
+    result.extend(divide_group(splits[1], time_between, margin_after))
     return result
 
 def text_similarity(analyzer, text_a, text_b):
@@ -183,11 +189,18 @@ def process(vid_fn, sub_fn, analyzer):
             # print()
             # print()
 
-            for clip_subs in divide_group(group):
-                clip_start = clip_subs[0].start
-                clip_end = clip_subs[-1].end
+            for clip_group in divide_group(group, FORCE_BREAK_TIME, FORCE_BREAK_TIME):
+                clip_subs = clip_group['subs']
+
+                SAFETY_MARGIN = 0.1 # to make sure we don't get speech from another subtitle
+                margin_before = min(IDEAL_MARGIN, max(clip_group['margin_before']-SAFETY_MARGIN, 0))
+                margin_after = max(min(IDEAL_MARGIN, max(clip_group['margin_after']-SAFETY_MARGIN, 0)), MIN_AFTER_MARGIN)
+
+                clip_start = clip_subs[0].start - datetime.timedelta(seconds=margin_before)
+                clip_end = clip_subs[-1].end + datetime.timedelta(seconds=margin_after)
                 dur = clip_end - clip_start
-                print('BEGIN CLIP', 'duration', dur.total_seconds())
+
+                print('BEGIN CLIP', 'from', clip_start, 'to', clip_end, 'duration', dur.total_seconds())
                 print('SUBS')
                 print('--')
                 for sub in clip_subs:
