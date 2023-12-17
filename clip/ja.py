@@ -1,6 +1,7 @@
 import re
 
 from sudachipy import tokenizer, dictionary
+import jaconv
 
 # key is (reading_form, normalized_form), value is new reading_form
 MORPHEME_SUBSTS = {
@@ -38,9 +39,14 @@ def _get_morpheme_token(m):
 # clean text so as represent spoken language, removing things like descriptions
 # of sounds, speaker names, etc.
 def _user_clean_text(text):
-    # remove parentheses and their contents
-    text = re.sub(r'（[^）]*）', '', text)
+    # replace halfwidth katakana with fullwidth katakana
+    text = jaconv.h2z(text) # h2z only affects kana by default, which is what we want
+
+    # remove various parentheses (including fullwidth variants) and their contents
     text = re.sub(r'\([^)]*\)', '', text)
+    text = re.sub(r'（[^）]*）', '', text)
+    text = re.sub(r'〔[^〕]*〕', '', text)
+    text = re.sub(r'〈[^〉]*〉', '', text)
     text = text.strip()
     return text
 
