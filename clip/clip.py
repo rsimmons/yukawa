@@ -17,6 +17,7 @@ FORCE_BREAK_TIME = 3
 MAX_CLIP_LENGTH = 14 # does not include margins
 IDEAL_MARGIN = 0.5 # this is also the maximum, may end up being less
 MIN_AFTER_MARGIN = 0.1
+SIMILARITY_THRESHOLD = 0.75
 
 def extract_audio(vid_fn, start_time, end_time, audio_fn):
     # extract to wav to avoid re-encoding
@@ -215,6 +216,12 @@ def process(vid_fn, sub_fn, analyzer):
                 sim = text_similarity(analyzer, human_text, asr_text)
                 sims.append(sim)
                 print('SIMILARITY:', sim)
+
+                if sim < SIMILARITY_THRESHOLD:
+                    print('LOW SIMILARITY, SKIPPING')
+                    print()
+                    print()
+                    continue
 
                 clip_fn = os.path.join(OUTDIR, f'{clip_count:04d}.mp4')
                 extract_video(vid_fn, clip_start, clip_end, clip_fn)
