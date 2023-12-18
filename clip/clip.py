@@ -13,8 +13,8 @@ import diff_match_patch as dmp
 
 from ja import JapaneseAnalyzer
 
-FORCE_BREAK_TIME = 2
-MAX_CLIP_LENGTH = 10 # does not include margins
+FORCE_BREAK_TIME = 3
+MAX_CLIP_LENGTH = 14 # does not include margins
 IDEAL_MARGIN = 0.5 # this is also the maximum, may end up being less
 MIN_AFTER_MARGIN = 0.1
 
@@ -50,62 +50,52 @@ def extract_video(vid_fn, start_time, end_time, out_fn):
     with open(os.devnull, 'w') as devnull:
         subprocess.check_call(cmdline, stderr=devnull)
 
-# a group is a list of adjacent subtitles
+# a group is a list of contiguous subtitles
 # returns a flat list of new groups (sequences of contiguous subtitles),
 # each group a dict with keys 'subs', 'margin_before', 'margin_after',
 # both margins in seconds indicating how much speech-free time should be
 # available before/after to extend the clip time beyond the sub times
-def divide_group(group, margin_before, margin_after):
-    assert len(group) > 0
+def divide_group(subs, margin_before, margin_after):
+    #print('divide_group', subs)
+    assert len(subs) > 0
 
-    # if below total time/character thresholds, keep group as is
-    if (group[-1].end - group[0].start) < datetime.timedelta(seconds=MAX_CLIP_LENGTH):
-        return [{'subs': group, 'margin_before': margin_before, 'margin_after': margin_after}]
+    # if below total time/character thresholds, keep subs as is
+    if (subs[-1].end - subs[0].start) < datetime.timedelta(seconds=MAX_CLIP_LENGTH):
+        #print('keeping intact')
+        return [{'subs': subs, 'margin_before': margin_before, 'margin_after': margin_after}]
+    #print('splitting')
 
-    if len(group) == 1:
+    if len(subs) == 1:
         assert False, 'single subtitle cue is too big to be a clip'
 
-    # find biggest time gap
-    biggest_gap = None
-    biggest_gap_index = None
-    for i in range(len(group)-1):
-        gap = group[i+1].start - group[i].end
-        if (gap.total_seconds() > 0) and ((biggest_gap is None) or (gap > biggest_gap)):
-            biggest_gap = gap
-            biggest_gap_index = i
-    if biggest_gap is not None:
-        # divide at biggest gap
-        # print('time split, biggest gap is', biggest_gap)
-        splits = [group[:biggest_gap_index+1], group[biggest_gap_index+1:]]
-    else:
-        # there are no time gaps, so divide as evenly as possible by character counts
-        print('BEGIN NOGAP', 'duration', (group[-1].end - group[0].start).total_seconds(), 'SUBS:')
-        for sub in group:
-            print('--')
-            print(sub.content)
-        print('--')
-        print('END NOGAP')
-        print()
-        print()
+    # get scores for each split point
+    split_scores = [] # list of dicts with 'gap' (in seconds), 'imbalance' (float, lower better), and 'index'
+    total_chars = sum(len(sub.content) for sub in subs)
+    for i in range(len(subs)-1):
+        # don't split if there is a "continuation arrow" (→) ending the first subtitle
+        if subs[i].content.strip()[-1] in ['→', '➡', '―']:
+            continue
 
-        total_chars = sum(len(sub.content) for sub in group)
-        half_chars = 0.5*total_chars
-        closest_chars = None
-        closest_chars_index = None
-        for i in range(len(group)-1):
-            chars = sum(len(sub.content) for sub in group[:i+1])
-            if (closest_chars is None) or (abs(chars - half_chars) < abs(closest_chars - half_chars)):
-                closest_chars = chars
-                closest_chars_index = i
-        # print('char split, closest fraction is', closest_chars)
-        splits = [group[:closest_chars_index+1], group[closest_chars_index+1:]]
+        gap = (subs[i+1].start - subs[i].end).total_seconds()
+
+        running_chars = sum(len(sub.content) for sub in subs[:i+1])
+        imbalance = abs(running_chars - (0.5*total_chars))/total_chars
+
+        split_scores.append({'gap': gap, 'imbalance': imbalance, 'index': i})
+
+    # sort by biggest gap, then (if tied) lowest imbalance
+    split_scores.sort(key=lambda x: (-x['gap'], x['imbalance']))
+    #print('sorted split scores:', split_scores)
+
+    best_split_index = split_scores[0]['index']
+    before_split_subs = subs[:best_split_index+1]
+    after_split_subs = subs[best_split_index+1:]
 
     # recursively divide each split
-    assert len(splits) == 2
-    time_between = (splits[1][0].start - splits[0][-1].end).total_seconds()
+    time_between = (after_split_subs[0].start - before_split_subs[-1].end).total_seconds()
     result = []
-    result.extend(divide_group(splits[0], margin_before, time_between))
-    result.extend(divide_group(splits[1], time_between, margin_after))
+    result.extend(divide_group(before_split_subs, margin_before, time_between))
+    result.extend(divide_group(after_split_subs, time_between, margin_after))
     return result
 
 def text_similarity(analyzer, text_a, text_b):
