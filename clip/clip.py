@@ -301,7 +301,7 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans):
                     })
                 clip_info['subs'] = retimed_subs
 
-                trans_subs_by_lang = {}
+                translations = []
                 if trans:
                     assert trans_subs
                     retimed_trans_subs = []
@@ -312,8 +312,12 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans):
                             'end': min((sub.end - clip_start).total_seconds(), dur.total_seconds()),
                             'text': sub.content,
                         })
-                    trans_subs_by_lang['en'] = retimed_trans_subs
-                clip_info['trans_subs'] = trans_subs_by_lang
+                    translations.append({
+                        'lang': 'en',
+                        'machine': False,
+                        'subs': retimed_trans_subs,
+                    })
+                clip_info['translations'] = translations
 
                 clip_info['asr_similarity'] = sim
 
