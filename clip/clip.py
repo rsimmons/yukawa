@@ -251,8 +251,14 @@ def process(vid_fn, sub_fn, analyzer, trans):
                     print()
                     continue
 
-                trans_subs = find_overlapping_subs(cleaned_trans_subs, clip_start, clip_end)
-                if trans_subs:
+                if trans:
+                    trans_subs = find_overlapping_subs(cleaned_trans_subs, clip_start, clip_end)
+                    if not trans_subs:
+                        print('NO TRANSLATION SUBS, SKIPPING')
+                        print()
+                        print()
+                        continue
+
                     print('TRANSLATION SUBS')
                     print('--')
                     for sub in trans_subs:
@@ -327,6 +333,8 @@ if __name__ == '__main__':
         print('found translated subtitle file:', trans_sub_fn)
         trans_analyzer = EnglishAnalyzer()
         trans = (trans_sub_fn, trans_analyzer)
+    else:
+        assert False, 'no translated subtitle file found'
 
     print('loading Whisper model...')
     whisper_model = whisper.load_model('large-v3')
