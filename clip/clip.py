@@ -12,6 +12,7 @@ import whisper
 import diff_match_patch as dmp
 
 from ja import JapaneseAnalyzer
+from en import EnglishAnalyzer
 
 FORCE_BREAK_TIME = 3
 MAX_CLIP_LENGTH = 14 # does not include margins
@@ -128,7 +129,7 @@ def text_similarity(analyzer, text_a, text_b):
 
     return sim
 
-def process(vid_fn, sub_fn, analyzer):
+def load_clean_subs(sub_fn, analyzer):
     with open(sub_fn, 'r', encoding='utf-8') as sub_file:
         sub_data = sub_file.read()
 
@@ -152,6 +153,34 @@ def process(vid_fn, sub_fn, analyzer):
             continue
 
         cleaned_subs.append(srt.Subtitle(sub.index, sub.start, sub.end, clean_text))
+
+    return cleaned_subs
+
+# find subs that sufficiently overlap the given time window
+# O(n) in number of subs, I'm lazy and it's fine
+def find_overlapping_subs(subs, start_time, end_time):
+    OVERLAP_THRESHOLD = 0.5 # at least this fraction of the subtitle must overlap with the time window
+
+    overlapping_subs = []
+    for sub in subs:
+        overlap_start = max(sub.start, start_time)
+        overlap_end = min(sub.end, end_time)
+        if overlap_end > overlap_start:
+            overlap_seconds = (overlap_end - overlap_start).total_seconds()
+            sub_seconds = (sub.end - sub.start).total_seconds()
+            if (overlap_seconds/sub_seconds) >= OVERLAP_THRESHOLD:
+                overlapping_subs.append(sub)
+
+    return overlapping_subs
+
+# trans (translation) is None or (trans_sub_fn, trans_analyzer)
+def process(vid_fn, sub_fn, analyzer, trans):
+    cleaned_subs = load_clean_subs(sub_fn, analyzer)
+
+    cleaned_trans_subs = []
+    if trans:
+        (trans_sub_fn, trans_analyzer) = trans
+        cleaned_trans_subs = load_clean_subs(trans_sub_fn, trans_analyzer)
 
     coarse_groups = []
     group = []
@@ -207,11 +236,9 @@ def process(vid_fn, sub_fn, analyzer):
                         whisper_result = whisper_model.transcribe(audio_fn, language='ja', initial_prompt='映画の字幕です。')
                     # pprint.pprint(whisper_result)
 
-                human_text = '\n'.join(analyzer.clean_text(sub.content) for sub in clip_subs)
+                human_text = '\n'.join(sub.content for sub in clip_subs)
                 asr_text = whisper_result['text']
 
-                print('CLEANED HUMAN TEXT:')
-                print(human_text)
                 print('ASR TEXT:', asr_text)
 
                 sim = text_similarity(analyzer, human_text, asr_text)
@@ -223,6 +250,14 @@ def process(vid_fn, sub_fn, analyzer):
                     print()
                     print()
                     continue
+
+                trans_subs = find_overlapping_subs(cleaned_trans_subs, clip_start, clip_end)
+                if trans_subs:
+                    print('TRANSLATION SUBS')
+                    print('--')
+                    for sub in trans_subs:
+                        print(sub.content)
+                        print('--')
 
                 clip_fn = os.path.join(OUTDIR, f'{clip_count:04d}.mp4')
                 extract_video(vid_fn, clip_start, clip_end, clip_fn)
@@ -242,9 +277,10 @@ def process(vid_fn, sub_fn, analyzer):
 
 BCP_ALT_SUB_CODES = {
     'ja': ['jpn', 'jp'],
+    'en': ['eng'],
 }
 
-def find_matching_subfile(vid_fn, bcp):
+def find_matching_subfile(vid_fn, bcp, match_uncoded):
     allow_codes = [bcp] + BCP_ALT_SUB_CODES.get(bcp, [])
 
     vid_dir, vid_basename = os.path.split(os.path.abspath(vid_fn))
@@ -258,7 +294,7 @@ def find_matching_subfile(vid_fn, bcp):
             if sub_ext == '.srt':
                 sub_mid = sub_prefix[len(vid_prefix):]
                 sub_code = ''.join(c for c in sub_mid if c.isalpha())
-                if (not sub_code) or (sub_code.lower() in allow_codes):
+                if (match_uncoded and (not sub_code)) or (sub_code.lower() in allow_codes):
                     potential_sub_fns.append((sub_code, sub_fn))
 
     if len(potential_sub_fns) == 0:
@@ -279,15 +315,22 @@ if __name__ == '__main__':
         sys.exit(1)
 
     bcp = 'ja'
-    sub_fn = find_matching_subfile(vid_fn, bcp)
+    sub_fn = find_matching_subfile(vid_fn, bcp, match_uncoded=True)
     if sub_fn is None:
         print('could not find matching subtitle file')
         sys.exit(1)
     print('found subtitle file:', sub_fn)
+
+    trans_sub_fn = find_matching_subfile(vid_fn, 'en', match_uncoded=False)
+    trans = None
+    if trans_sub_fn:
+        print('found translated subtitle file:', trans_sub_fn)
+        trans_analyzer = EnglishAnalyzer()
+        trans = (trans_sub_fn, trans_analyzer)
 
     print('loading Whisper model...')
     whisper_model = whisper.load_model('large-v3')
     print('done')
 
     ja_analyzer = JapaneseAnalyzer()
-    process(vid_fn, sub_fn, ja_analyzer)
+    process(vid_fn, sub_fn, ja_analyzer, trans)

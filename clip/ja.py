@@ -99,6 +99,7 @@ CLEAN_TEXT_TESTS = [
 
     # HTML tags
     ('<i>大丈夫</i>です', '大丈夫です'),
+    ('<c.ms Gothic>仕事のことだって</c.ms Gothic>', '仕事のことだって'),
 
     # halfwidth katakana
     ('はいはい ｶﾂ丼｡', 'はいはい カツ丼。'),
