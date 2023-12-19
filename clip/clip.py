@@ -100,8 +100,8 @@ def divide_group(subs, margin_before, margin_after):
     return result
 
 def text_similarity(analyzer, text_a, text_b):
-    tokenstr_a = analyzer.make_tokenstr(text_a)
-    tokenstr_b = analyzer.make_tokenstr(text_b)
+    tokenstr_a = analyzer.audible_tokenstr(text_a)
+    tokenstr_b = analyzer.audible_tokenstr(text_b)
 
     dmp_obj = dmp.diff_match_patch()
     diffs = dmp_obj.diff_main(tokenstr_a, tokenstr_b, False)
@@ -143,13 +143,14 @@ def process(vid_fn, sub_fn, analyzer):
             print('---')
             print(clean_text)
             print('END CLEANED SUBTITLE')
-
-            if not clean_text:
-                print('SKIPPING EMPTY SUBTITLE')
-                print()
-                continue
-
             print()
+
+        if analyzer.skip_text(clean_text):
+            print('SKIPPING SUBTITLE')
+            print(clean_text)
+            print()
+            continue
+
         cleaned_subs.append(srt.Subtitle(sub.index, sub.start, sub.end, clean_text))
 
     coarse_groups = []
