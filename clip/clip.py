@@ -5,6 +5,10 @@ import subprocess
 import tempfile
 import pprint
 import warnings
+import random
+import string
+import json
+import time
 from pathlib import Path
 
 import srt
@@ -19,6 +23,10 @@ MAX_CLIP_LENGTH = 14 # does not include margins
 IDEAL_MARGIN = 0.5 # this is also the maximum, may end up being less
 MIN_AFTER_MARGIN = 0.1
 SIMILARITY_THRESHOLD = 0.75
+
+def random_id():
+    # ~71 bits of entropy
+    return ''.join(random.choice(string.ascii_letters+string.digits) for i in range(12))
 
 def extract_audio(vid_fn, start_time, end_time, audio_fn):
     # extract to wav to avoid re-encoding
@@ -174,7 +182,9 @@ def find_overlapping_subs(subs, start_time, end_time):
     return overlapping_subs
 
 # trans (translation) is None or (trans_sub_fn, trans_analyzer)
-def process(vid_fn, sub_fn, analyzer, trans):
+def process(source_id, vid_fn, sub_fn, analyzer, trans):
+    t0 = time.time()
+
     cleaned_subs = load_clean_subs(sub_fn, analyzer)
 
     cleaned_trans_subs = []
@@ -251,6 +261,7 @@ def process(vid_fn, sub_fn, analyzer, trans):
                     print()
                     continue
 
+                trans_subs = []
                 if trans:
                     trans_subs = find_overlapping_subs(cleaned_trans_subs, clip_start, clip_end)
                     if not trans_subs:
@@ -265,9 +276,50 @@ def process(vid_fn, sub_fn, analyzer, trans):
                         print(sub.content)
                         print('--')
 
-                clip_fn = os.path.join(OUTDIR, f'{clip_count:04d}.mp4')
+                #clip_fn = os.path.join(OUTDIR, f'{clip_count:04d}.mp4')
+                clip_id = f'{source_id}_{random_id()}'
+                clip_fn = os.path.join(OUTDIR, f'{clip_id}.mp4')
+
                 extract_video(vid_fn, clip_start, clip_end, clip_fn)
                 print('CLIP FILE:', clip_fn)
+
+                # make clip info object
+                clip_info = {}
+
+                # these are redundant, but for sanity checking
+                clip_info['clip_id'] = clip_id
+                clip_info['source_id'] = source_id
+
+                clip_info['duration'] = dur.total_seconds()
+
+                retimed_subs = []
+                for sub in clip_subs:
+                    retimed_subs.append({
+                        'start': (sub.start - clip_start).total_seconds(),
+                        'end': (sub.end - clip_start).total_seconds(),
+                        'text': sub.content,
+                    })
+                clip_info['subs'] = retimed_subs
+
+                trans_subs_by_lang = {}
+                if trans:
+                    assert trans_subs
+                    retimed_trans_subs = []
+                    for sub in trans_subs:
+                        retimed_trans_subs.append({
+                            # these get clamped to the clip duration
+                            'start': max((sub.start - clip_start).total_seconds(), 0),
+                            'end': min((sub.end - clip_start).total_seconds(), dur.total_seconds()),
+                            'text': sub.content,
+                        })
+                    trans_subs_by_lang['en'] = retimed_trans_subs
+                clip_info['trans_subs'] = trans_subs_by_lang
+
+                clip_info['asr_similarity'] = sim
+
+                info_fn = os.path.join(OUTDIR, f'{clip_id}.json')
+                with open(info_fn, 'w', encoding='utf-8') as info_file:
+                    info_file.write(json.dumps(clip_info, indent=2, ensure_ascii=False))
 
                 print('END CLIP')
                 print()
@@ -277,8 +329,12 @@ def process(vid_fn, sub_fn, analyzer, trans):
     except KeyboardInterrupt:
         print('INTERRUPTED')
 
+    dt = time.time() - t0
+
+    print(clip_count, 'clips generated in', dt, 'seconds', f'({dt/clip_count} seconds per clip)')
+
     print('average similarity:', sum(sims) / len(sims))
-    for thresh in [0.9, 0.8, 0.5]:
+    for thresh in [0.9, SIMILARITY_THRESHOLD, 0.5]:
         print(f'similarity above {thresh}:', sum(1 for sim in sims if sim > thresh) / len(sims))
 
 BCP_ALT_SUB_CODES = {
@@ -341,4 +397,4 @@ if __name__ == '__main__':
     print('done')
 
     ja_analyzer = JapaneseAnalyzer()
-    process(vid_fn, sub_fn, ja_analyzer, trans)
+    process(random_id(), vid_fn, sub_fn, ja_analyzer, trans)
