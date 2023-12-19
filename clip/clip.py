@@ -147,7 +147,7 @@ def load_clean_subs(sub_fn, analyzer):
             print()
 
         if analyzer.skip_text(clean_text):
-            print('SKIPPING SUBTITLE')
+            print('@WARNING: SKIPPING SUBTITLE')
             print(clean_text)
             print()
             continue
@@ -246,7 +246,7 @@ def process(vid_fn, sub_fn, analyzer, trans):
                 print('SIMILARITY:', sim)
 
                 if sim < SIMILARITY_THRESHOLD:
-                    print('LOW SIMILARITY, SKIPPING')
+                    print('@WARNING: LOW SIMILARITY, SKIPPING')
                     print()
                     print()
                     continue
@@ -254,7 +254,7 @@ def process(vid_fn, sub_fn, analyzer, trans):
                 if trans:
                     trans_subs = find_overlapping_subs(cleaned_trans_subs, clip_start, clip_end)
                     if not trans_subs:
-                        print('NO TRANSLATION SUBS, SKIPPING')
+                        print('@WARNING: NO TRANSLATION SUBS, SKIPPING')
                         print()
                         print()
                         continue
