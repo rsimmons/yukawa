@@ -49,7 +49,7 @@ def extract_video(vid_fn, start_time, end_time, out_fn):
         '-ac', '2',
     ]
     if out_fn.endswith('.mp4'):
-        cmdline += ['-strict', '-2', '-acodec', 'aac', '-vcodec', 'h264', '-f', 'mp4']
+        cmdline += ['-strict', '-2', '-acodec', 'aac', '-vcodec', 'libx264', '-preset', 'slow', '-f', 'mp4']
     elif out_fn.endswith('.webm'):
         cmdline += ['-acodec', 'libvorbis', '-vcodec', 'libvpx', '-crf', '10', '-b:v', '1M', '-f', 'webm']
     else:
