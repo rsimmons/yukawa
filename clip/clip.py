@@ -10,6 +10,8 @@ import string
 import json
 import time
 from pathlib import Path
+import yaml
+import argparse
 
 import srt
 import whisper
@@ -23,6 +25,16 @@ MAX_CLIP_LENGTH = 14 # does not include margins
 IDEAL_MARGIN = 0.5 # this is also the maximum, may end up being less
 MIN_AFTER_MARGIN = 0.1
 SIMILARITY_THRESHOLD = 0.75
+
+
+whisper_model = None
+def ensure_whisper_loaded():
+    global whisper_model
+    if whisper_model is not None:
+        return
+    print('loading Whisper model...')
+    whisper_model = whisper.load_model('large-v3')
+    print('done')
 
 def random_id():
     # ~71 bits of entropy
@@ -182,7 +194,7 @@ def find_overlapping_subs(subs, start_time, end_time):
     return overlapping_subs
 
 # trans (translation) is None or (trans_sub_fn, trans_analyzer)
-def process(source_id, vid_fn, sub_fn, analyzer, trans):
+def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
     t0 = time.time()
 
     cleaned_subs = load_clean_subs(sub_fn, analyzer)
@@ -205,8 +217,6 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans):
     if group:
         coarse_groups.append(group)
 
-    OUTDIR = './output'
-    Path(OUTDIR).mkdir(parents=True, exist_ok=True)
     sims = []
     clip_count = 0
     try:
@@ -241,6 +251,7 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans):
                 with tempfile.NamedTemporaryFile(suffix='.wav', dir='.') as audio_file:
                     audio_fn = audio_file.name
                     extract_audio(vid_fn, clip_start, clip_end, audio_fn)
+                    ensure_whisper_loaded()
                     with warnings.catch_warnings():
                         warnings.filterwarnings('ignore', 'FP16 is not supported on CPU; using FP32 instead')
                         whisper_result = whisper_model.transcribe(audio_fn, language='ja', initial_prompt='映画の字幕です。')
@@ -276,9 +287,8 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans):
                         print(sub.content)
                         print('--')
 
-                #clip_fn = os.path.join(OUTDIR, f'{clip_count:04d}.mp4')
                 clip_id = f'{source_id}_{random_id()}'
-                clip_fn = os.path.join(OUTDIR, f'{clip_id}.mp4')
+                clip_fn = os.path.join(output_dir, f'clip-{clip_id}.mp4')
 
                 extract_video(vid_fn, clip_start, clip_end, clip_fn)
                 print('CLIP FILE:', clip_fn)
@@ -321,7 +331,7 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans):
 
                 clip_info['asr_similarity'] = sim
 
-                info_fn = os.path.join(OUTDIR, f'{clip_id}.json')
+                info_fn = os.path.join(output_dir, f'clip-{clip_id}.json')
                 with open(info_fn, 'w', encoding='utf-8') as info_file:
                     info_file.write(json.dumps(clip_info, indent=2, ensure_ascii=False))
 
@@ -331,7 +341,7 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans):
 
                 clip_count += 1
     except KeyboardInterrupt:
-        print('INTERRUPTED')
+        raise
 
     dt = time.time() - t0
 
@@ -371,34 +381,50 @@ def find_matching_subfile(vid_fn, bcp, match_uncoded):
         assert False, 'multiple potential subtitle files found'
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print('usage: clip.py <video file>')
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Generate clips from video and subtitle files')
+    parser.add_argument('sources_list_yaml_fn', help='YAML file containing list of sources')
+    parser.add_argument('video_files_root_dir', help='root directory containing video files')
+    parser.add_argument('output_dir', help='directory to write clips to')
 
-    vid_fn = sys.argv[1]
-    if not os.path.exists(vid_fn):
-        print('video file does not exist')
-        sys.exit(1)
+    args = parser.parse_args()
 
-    bcp = 'ja'
-    sub_fn = find_matching_subfile(vid_fn, bcp, match_uncoded=True)
-    if sub_fn is None:
-        print('could not find matching subtitle file')
-        sys.exit(1)
-    print('found subtitle file:', sub_fn)
+    vid_lang = 'ja' # hardcode for now
 
-    trans_sub_fn = find_matching_subfile(vid_fn, 'en', match_uncoded=False)
-    trans = None
-    if trans_sub_fn:
-        print('found translated subtitle file:', trans_sub_fn)
-        trans_analyzer = EnglishAnalyzer()
-        trans = (trans_sub_fn, trans_analyzer)
-    else:
-        assert False, 'no translated subtitle file found'
+    with open(args.sources_list_yaml_fn, 'r', encoding='utf-8') as sources_list_yaml_file:
+        sources_list = yaml.safe_load(sources_list_yaml_file)
 
-    print('loading Whisper model...')
-    whisper_model = whisper.load_model('large-v3')
-    print('done')
+    assert os.path.isdir(args.video_files_root_dir), f'video files root directory {args.video_files_root_dir} does not exist'
+    assert os.path.isdir(args.output_dir), f'output directory {args.output_dir} does not exist'
 
-    ja_analyzer = JapaneseAnalyzer()
-    process(random_id(), vid_fn, sub_fn, ja_analyzer, trans)
+    for source_info in sources_list:
+        source_id = source_info['id']
+
+        vid_dir = os.path.join(args.video_files_root_dir, source_info['dir'])
+        assert os.path.isdir(vid_dir), f'video files directory {vid_dir} does not exist'
+
+        print('PROCESSING SOURCE:', source_id, 'IN DIR:', vid_dir)
+
+        for fn in sorted(os.listdir(vid_dir)):
+            fn_ext = os.path.splitext(fn)[1]
+            if fn_ext in ['.mp4', '.mkv', '.webm']:
+                vid_fn = os.path.join(vid_dir, fn)
+            else:
+                continue
+
+            print('PROCESSING VIDEO FILE:', vid_fn)
+
+            sub_fn = find_matching_subfile(vid_fn, vid_lang, match_uncoded=True)
+            assert sub_fn, 'no matching subtitle file found'
+            print('FOUND SUBTITLE FILE:', sub_fn)
+
+            trans_sub_fn = find_matching_subfile(vid_fn, 'en', match_uncoded=False)
+            trans = None
+            if trans_sub_fn:
+                print('found translated subtitle file:', trans_sub_fn)
+                trans_analyzer = EnglishAnalyzer()
+                trans = (trans_sub_fn, trans_analyzer)
+            else:
+                assert False, 'no translated subtitle file found'
+
+            ja_analyzer = JapaneseAnalyzer()
+            process(source_id, vid_fn, sub_fn, ja_analyzer, trans, args.output_dir)
