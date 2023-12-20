@@ -287,7 +287,7 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                         print(sub.content)
                         print('--')
 
-                clip_id = f'{source_id}_{random_id()}'
+                clip_id = random_id()
                 clip_fn = os.path.join(output_dir, f'clip-{clip_id}.mp4')
 
                 extract_video(vid_fn, clip_start, clip_end, clip_fn)
@@ -404,6 +404,9 @@ if __name__ == '__main__':
 
         print('PROCESSING SOURCE:', source_id, 'IN DIR:', vid_dir)
 
+        source_output_dir = os.path.join(args.output_dir, source_id)
+        Path(source_output_dir).mkdir(exist_ok=True)
+
         for fn in sorted(os.listdir(vid_dir)):
             fn_ext = os.path.splitext(fn)[1]
             if fn_ext in ['.mp4', '.mkv', '.webm']:
@@ -427,4 +430,4 @@ if __name__ == '__main__':
                 assert False, 'no translated subtitle file found'
 
             ja_analyzer = JapaneseAnalyzer()
-            process(source_id, vid_fn, sub_fn, ja_analyzer, trans, args.output_dir)
+            process(source_id, vid_fn, sub_fn, ja_analyzer, trans, source_output_dir)
