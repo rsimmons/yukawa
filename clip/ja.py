@@ -3,7 +3,7 @@ import re
 from sudachipy import tokenizer, dictionary
 import jaconv
 
-from lang_util import remove_html_tags
+from lang_util import remove_html_tags, count_meaty_chars
 
 # key is (reading_form, normalized_form), value is new reading_form
 MORPHEME_SUBSTS = {
@@ -80,6 +80,9 @@ class JapaneseAnalyzer:
     # or only includes 'uhh')
     # Assumes text has already been cleaned
     def skip_text(self, text):
+        if count_meaty_chars(text) == 0:
+            return True
+
         audible_text = _audible_text(text)
         return not audible_text
 
