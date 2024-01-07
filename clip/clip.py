@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 import yaml
 import argparse
+from collections import Counter
 
 import srt
 import whisper
@@ -22,10 +23,10 @@ from en import EnglishAnalyzer
 
 FORCE_BREAK_TIME = 3
 MAX_CLIP_LENGTH = 14 # does not include margins
+MIN_SPLIT_GAP = 0.5 # the gap between subs must be at least this much allow splitting into different clips
 IDEAL_MARGIN = 0.5 # this is also the maximum, may end up being less
 MIN_AFTER_MARGIN = 0.1
 SIMILARITY_THRESHOLD = 0.75
-
 
 whisper_model = None
 def ensure_whisper_loaded():
@@ -88,7 +89,8 @@ def divide_group(subs, margin_before, margin_after):
     #print('splitting')
 
     if len(subs) == 1:
-        assert False, 'single subtitle cue is too big to be a clip'
+        print('@WARNING: single subtitle too long to be a clip, skipping')
+        return []
 
     # get scores for each split point
     split_scores = [] # list of dicts with 'gap' (in seconds), 'imbalance' (float, lower better), and 'index'
@@ -99,6 +101,8 @@ def divide_group(subs, margin_before, margin_after):
             continue
 
         gap = (subs[i+1].start - subs[i].end).total_seconds()
+        if gap < MIN_SPLIT_GAP:
+            continue
 
         running_chars = sum(len(sub.content) for sub in subs[:i+1])
         imbalance = abs(running_chars - (0.5*total_chars))/total_chars
@@ -108,6 +112,12 @@ def divide_group(subs, margin_before, margin_after):
     # sort by biggest gap, then (if tied) lowest imbalance
     split_scores.sort(key=lambda x: (-x['gap'], x['imbalance']))
     #print('sorted split scores:', split_scores)
+
+    # there may be no split points if there is a series of subs that all
+    # end with continuation arrows whose total duration exceeds MAX_CLIP_LENGTH
+    if len(split_scores) == 0:
+        print('@WARNING: no good split points found, skipping')
+        return []
 
     best_split_index = split_scores[0]['index']
     before_split_subs = subs[:best_split_index+1]
@@ -195,6 +205,8 @@ def find_overlapping_subs(subs, start_time, end_time):
 
 # trans (translation) is None or (trans_sub_fn, trans_analyzer)
 def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
+    global CLIP_DURS
+
     t0 = time.time()
 
     cleaned_subs = load_clean_subs(sub_fn, analyzer)
@@ -248,29 +260,33 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                     print(sub.content)
                     print('--')
 
-                with tempfile.NamedTemporaryFile(suffix='.wav', dir='.') as audio_file:
-                    audio_fn = audio_file.name
-                    extract_audio(vid_fn, clip_start, clip_end, audio_fn)
-                    ensure_whisper_loaded()
-                    with warnings.catch_warnings():
-                        warnings.filterwarnings('ignore', 'FP16 is not supported on CPU; using FP32 instead')
-                        whisper_result = whisper_model.transcribe(audio_fn, language='ja', initial_prompt='映画の字幕です。')
-                    # pprint.pprint(whisper_result)
+                if DRY_RUN:
+                    sim = 1.0
+                else:
+                    with tempfile.NamedTemporaryFile(suffix='.wav', dir='.') as audio_file:
+                        audio_fn = audio_file.name
+                        extract_audio(vid_fn, clip_start, clip_end, audio_fn)
+                        ensure_whisper_loaded()
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings('ignore', 'FP16 is not supported on CPU; using FP32 instead')
+                            whisper_result = whisper_model.transcribe(audio_fn, language='ja', initial_prompt='映画の字幕です。')
+                        # pprint.pprint(whisper_result)
 
-                human_text = '\n'.join(sub.content for sub in clip_subs)
-                asr_text = whisper_result['text']
+                    human_text = '\n'.join(sub.content for sub in clip_subs)
+                    asr_text = whisper_result['text']
 
-                print('ASR TEXT:', asr_text)
+                    print('ASR TEXT:', asr_text)
 
-                sim = text_similarity(analyzer, human_text, asr_text)
+                    sim = text_similarity(analyzer, human_text, asr_text)
+                    print('SIMILARITY:', sim)
+
+                    if sim < SIMILARITY_THRESHOLD:
+                        print('@WARNING: LOW SIMILARITY, SKIPPING')
+                        print()
+                        print()
+                        continue
+
                 sims.append(sim)
-                print('SIMILARITY:', sim)
-
-                if sim < SIMILARITY_THRESHOLD:
-                    print('@WARNING: LOW SIMILARITY, SKIPPING')
-                    print()
-                    print()
-                    continue
 
                 trans_subs = []
                 if trans:
@@ -290,8 +306,12 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                 clip_id = random_id()
                 clip_fn = os.path.join(output_dir, f'clip-{clip_id}.mp4')
 
-                extract_video(vid_fn, clip_start, clip_end, clip_fn)
-                print('CLIP FILE:', clip_fn)
+                if DRY_RUN:
+                    print('CLIP FILE (NOT CREATED):', clip_fn)
+                else:
+                    extract_video(vid_fn, clip_start, clip_end, clip_fn)
+                    print('CLIP FILE:', clip_fn)
+
 
                 # make clip info object
                 clip_info = {}
@@ -301,6 +321,7 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                 clip_info['source_id'] = source_id
 
                 clip_info['duration'] = dur.total_seconds()
+                CLIP_DURS.append(dur.total_seconds())
 
                 retimed_subs = []
                 for sub in clip_subs:
@@ -382,11 +403,14 @@ def find_matching_subfile(vid_fn, bcp, match_uncoded):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate clips from video and subtitle files')
+    parser.add_argument('--dry-run', action='store_true', help='do not generate clips')
     parser.add_argument('sources_list_yaml_fn', help='YAML file containing list of sources')
     parser.add_argument('video_files_root_dir', help='root directory containing video files')
     parser.add_argument('output_dir', help='directory to write clips to')
 
     args = parser.parse_args()
+
+    DRY_RUN = args.dry_run
 
     vid_lang = 'ja' # hardcode for now
 
@@ -396,6 +420,7 @@ if __name__ == '__main__':
     assert os.path.isdir(args.video_files_root_dir), f'video files root directory {args.video_files_root_dir} does not exist'
     assert os.path.isdir(args.output_dir), f'output directory {args.output_dir} does not exist'
 
+    CLIP_DURS = []
     for source_info in sources_list:
         source_id = source_info['id']
 
@@ -431,3 +456,15 @@ if __name__ == '__main__':
 
             ja_analyzer = JapaneseAnalyzer()
             process(source_id, vid_fn, sub_fn, ja_analyzer, trans, source_output_dir)
+
+    print('TOTAL CLIP COUNT:', len(CLIP_DURS))
+    print('TOTAL DURATION OF ALL CLIPS:', round(sum(CLIP_DURS)), 'seconds')
+
+    print('CLIP DURATIONS HISTOGRAM:')
+    clip_dur_bucket = Counter()
+    for dur in CLIP_DURS:
+        clip_dur_bucket[round(dur)] += 1
+    cumul = 0
+    for dur, count in sorted(clip_dur_bucket.items()):
+        cumul += count
+        print(f'{dur}\t{100*count/len(CLIP_DURS)}\t{100*cumul/len(CLIP_DURS)}')
