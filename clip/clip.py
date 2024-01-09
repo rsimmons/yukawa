@@ -404,8 +404,7 @@ def find_matching_subfile(vid_fn, bcp, match_uncoded):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate clips from video and subtitle files')
     parser.add_argument('--dry-run', action='store_true', help='do not generate clips')
-    parser.add_argument('sources_list_yaml_fn', help='YAML file containing list of sources')
-    parser.add_argument('video_files_root_dir', help='root directory containing video files')
+    parser.add_argument('sources_dir', help='directory containing source video files')
     parser.add_argument('output_dir', help='directory to write clips to')
 
     args = parser.parse_args()
@@ -414,29 +413,35 @@ if __name__ == '__main__':
 
     vid_lang = 'ja' # hardcode for now
 
-    with open(args.sources_list_yaml_fn, 'r', encoding='utf-8') as sources_list_yaml_file:
-        sources_list = yaml.safe_load(sources_list_yaml_file)
-
-    assert os.path.isdir(args.video_files_root_dir), f'video files root directory {args.video_files_root_dir} does not exist'
+    assert os.path.isdir(args.sources_dir), f'video files root directory {args.sources_dir} does not exist'
     assert os.path.isdir(args.output_dir), f'output directory {args.output_dir} does not exist'
 
     CLIP_DURS = []
-    for source_info in sources_list:
-        source_id = source_info['id']
+    for sdfn in sorted(os.listdir(args.sources_dir)):
+        # check if directory
+        source_dir = os.path.join(args.sources_dir, sdfn)
+        if not os.path.isdir(source_dir):
+            continue
 
-        vid_dir = os.path.join(args.video_files_root_dir, source_info['dir'])
-        assert os.path.isdir(vid_dir), f'video files directory {vid_dir} does not exist'
+        # check if source id file exists
+        source_id_fn = os.path.join(source_dir, 'SOURCEID')
+        assert os.path.isfile(source_id_fn), f'source id file {source_id_fn} does not exist'
 
-        print('PROCESSING SOURCE:', source_id, 'IN DIR:', vid_dir)
+        # load source info
+        with open(source_id_fn, 'r', encoding='utf-8') as source_info_file:
+            source_id = source_info_file.read().strip()
+
+        print('PROCESSING SOURCE:', source_id, 'IN DIR:', source_dir)
 
         source_output_dir = os.path.join(args.output_dir, source_id)
-        Path(source_output_dir).mkdir(exist_ok=True)
+        assert not os.path.exists(source_output_dir), f'source output directory {source_output_dir} already exists'
+        os.mkdir(source_output_dir)
 
-        for fn in sorted(os.listdir(vid_dir)):
+        for fn in sorted(os.listdir(source_dir)):
+            vid_fn = os.path.join(source_dir, fn)
+            assert not os.path.isdir(vid_fn), f'should not have directory {vid_fn} inside source dir'
             fn_ext = os.path.splitext(fn)[1]
-            if fn_ext in ['.mp4', '.mkv', '.webm']:
-                vid_fn = os.path.join(vid_dir, fn)
-            else:
+            if fn_ext not in ['.mp4', '.mkv', '.webm']:
                 continue
 
             print('PROCESSING VIDEO FILE:', vid_fn)
