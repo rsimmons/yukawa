@@ -18,6 +18,7 @@ import srt
 import whisper
 import diff_match_patch as dmp
 
+from trans import translate_to_en
 from ja import JapaneseAnalyzer
 from en import EnglishAnalyzer
 
@@ -333,6 +334,8 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                 clip_info['subs'] = retimed_subs
 
                 translations = []
+
+                # if human-translated subs were supplied, add them
                 if trans:
                     assert trans_subs
                     retimed_trans_subs = []
@@ -348,6 +351,20 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                         'machine': False,
                         'subs': retimed_trans_subs,
                     })
+
+                # add machine translation
+                clip_combined_text = '\n'.join(sub.content for sub in clip_subs)
+                clip_en_text = translate_to_en(clip_combined_text)
+                print('MACHINE TRANSLATION:')
+                print(clip_en_text)
+                translations.append({
+                    'lang': 'en',
+                    'machine': True,
+                    # v1: gpt-4-1106-preview, temp 0, no system msg, prompt 'Translate to English, replying with only the unquoted translation:'
+                    'algo': 'v1',
+                    'text': clip_en_text,
+                })
+
                 clip_info['translations'] = translations
 
                 clip_info['asr_similarity'] = sim
@@ -456,8 +473,6 @@ if __name__ == '__main__':
                 print('found translated subtitle file:', trans_sub_fn)
                 trans_analyzer = EnglishAnalyzer()
                 trans = (trans_sub_fn, trans_analyzer)
-            else:
-                assert False, 'no translated subtitle file found'
 
             ja_analyzer = JapaneseAnalyzer()
             process(source_id, vid_fn, sub_fn, ja_analyzer, trans, source_output_dir)
