@@ -58,8 +58,9 @@ def extract_video(vid_fn, start_time, end_time, out_fn):
         '-i', vid_fn,
         '-t', str((end_time - start_time).total_seconds()),
         # make correct width and height, padding with black in one dimension if necessary. from https://superuser.com/a/547406
-        #'-vf', 'scale=(sar*iw)*min({width}/(sar*iw)\\,{height}/ih):ih*min({width}/(sar*iw)\\,{height}/ih),pad={width}:{height}:({width}-(sar*iw)*min({width}/(sar*iw)\\,{height}/ih))/2:({height}-ih*min({width}/(sar*iw)\\,{height}/ih))/2,setdar=16:9'.format(width=OUTPUT_WIDTH, height=OUTPUT_HEIGHT),
-        '-vf', 'scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:-1:-1:color=black,setdar=16:9,setsar=1'.format(width=OUTPUT_WIDTH, height=OUTPUT_HEIGHT),
+        '-vf', 'scale=(sar*iw)*min({width}/(sar*iw)\\,{height}/ih):ih*min({width}/(sar*iw)\\,{height}/ih),pad={width}:{height}:({width}-(sar*iw)*min({width}/(sar*iw)\\,{height}/ih))/2:({height}-ih*min({width}/(sar*iw)\\,{height}/ih))/2,setsar=1'.format(width=OUTPUT_WIDTH, height=OUTPUT_HEIGHT),
+        # I tried this filter instead for resizing, but it didn't work when input had SAR 4:3 DAR 16:9 (60 Gohan Taisakushitsu)
+        #'-vf', 'scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:-1:-1:color=black,setdar=16:9,setsar=1'.format(width=OUTPUT_WIDTH, height=OUTPUT_HEIGHT),
         '-ac', '2',
     ]
     if out_fn.endswith('.mp4'):
