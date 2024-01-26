@@ -18,7 +18,7 @@ import srt
 import whisper
 import diff_match_patch as dmp
 
-from trans import translate_to_en
+from trans import translate_to_en, TRANS_ALGO
 from ja import JapaneseAnalyzer
 from en import EnglishAnalyzer
 
@@ -361,8 +361,7 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                     translations.append({
                         'lang': 'en',
                         'machine': True,
-                        # v1: gpt-4-1106-preview, temp 0, no system msg, prompt 'Translate to English, replying with only the unquoted translation:'
-                        'algo': 'v1',
+                        'algo': TRANS_ALGO,
                         'text': clip_en_text,
                     })
 
