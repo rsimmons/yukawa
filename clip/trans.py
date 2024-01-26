@@ -2,6 +2,9 @@ from openai import OpenAI
 
 openai_client = OpenAI()
 
+trans_total_prompt_tokens = 0
+trans_total_completion_tokens = 0
+
 # v1: gpt-4-1106-preview, temp 0, no system msg, prompt 'Translate to English, replying with only the unquoted translation:\n{text}'
 TRANS_ALGO = 'v1'
 
@@ -16,6 +19,11 @@ def translate_to_en(text):
         ],
         temperature=0,
     )
+
+    global trans_total_prompt_tokens
+    global trans_total_completion_tokens
+    trans_total_prompt_tokens += completion.usage.prompt_tokens
+    trans_total_completion_tokens += completion.usage.completion_tokens
 
     return completion.choices[0].message.content.strip()
 

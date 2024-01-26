@@ -18,16 +18,32 @@ import srt
 import whisper
 import diff_match_patch as dmp
 
+from semsplit import semantic_split_sub_group
 from trans import translate_to_en, TRANS_ALGO
 from ja import JapaneseAnalyzer
 from en import EnglishAnalyzer
 
 FORCE_BREAK_TIME = 3
 MAX_CLIP_LENGTH = 14 # does not include margins
-MIN_SPLIT_GAP = 0.5 # the gap between subs must be at least this much allow splitting into different clips
+MIN_SPLIT_GAP = 0.25 # the gap between subs must be at least this much to split into different clips based on time alone
 IDEAL_MARGIN = 0.5 # this is also the maximum, may end up being less
 MIN_AFTER_MARGIN = 0.1
 SIMILARITY_THRESHOLD = 0.75
+
+global_timers = {}
+
+class Timer:
+    def __init__(self, name):
+        self.name = name
+
+    def __enter__(self):
+        self.t0 = time.time()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        global global_timers
+        if self.name not in global_timers:
+            global_timers[self.name] = 0
+        global_timers[self.name] += time.time() - self.t0
 
 whisper_model = None
 def ensure_whisper_loaded():
@@ -46,7 +62,8 @@ def extract_audio(vid_fn, start_time, end_time, audio_fn):
     # extract to wav to avoid re-encoding
     cmdline = ['ffmpeg', '-ss', str(start_time.total_seconds()), '-accurate_seek', '-i', vid_fn, '-t', str((end_time - start_time).total_seconds()), '-map', '0:a:0', '-ac', '1', '-acodec', 'pcm_s16le', '-y', audio_fn]
     with open(os.devnull, 'w') as devnull:
-        subprocess.check_call(cmdline, stderr=devnull)
+        with Timer('extract_audio'):
+            subprocess.check_call(cmdline, stderr=devnull)
 
 def extract_video(vid_fn, start_time, end_time, out_fn):
     OUTPUT_WIDTH = 854
@@ -73,7 +90,8 @@ def extract_video(vid_fn, start_time, end_time, out_fn):
     cmdline += ['-y', out_fn]
 
     with open(os.devnull, 'w') as devnull:
-        subprocess.check_call(cmdline, stderr=devnull)
+        with Timer('extract_video'):
+            subprocess.check_call(cmdline, stderr=devnull)
 
 # a group is a list of contiguous subtitles
 # returns a flat list of new groups (sequences of contiguous subtitles),
@@ -94,19 +112,19 @@ def divide_group(subs, margin_before, margin_after):
         print('@WARNING: single subtitle too long to be a clip, skipping')
         return []
 
-    # get scores for each split point
+    # get scores for each split point (i.e. a sufficient time gap between two subs)
     split_scores = [] # list of dicts with 'gap' (in seconds), 'imbalance' (float, lower better), and 'index'
     total_chars = sum(len(sub.content) for sub in subs)
-    for i in range(len(subs)-1):
+    for i in range(1, len(subs)):
         # don't split if there is a "continuation arrow" (→) ending the first subtitle
-        if subs[i].content.strip()[-1] in ['→', '➡', '―']:
+        if subs[i-1].content.strip()[-1] in ['→', '➡', '―']:
             continue
 
-        gap = (subs[i+1].start - subs[i].end).total_seconds()
+        gap = (subs[i].start - subs[i-1].end).total_seconds()
         if gap < MIN_SPLIT_GAP:
             continue
 
-        running_chars = sum(len(sub.content) for sub in subs[:i+1])
+        running_chars = sum(len(sub.content) for sub in subs[:i])
         imbalance = abs(running_chars - (0.5*total_chars))/total_chars
 
         split_scores.append({'gap': gap, 'imbalance': imbalance, 'index': i})
@@ -115,15 +133,31 @@ def divide_group(subs, margin_before, margin_after):
     split_scores.sort(key=lambda x: (-x['gap'], x['imbalance']))
     #print('sorted split scores:', split_scores)
 
-    # there may be no split points if there is a series of subs that all
-    # end with continuation arrows whose total duration exceeds MAX_CLIP_LENGTH
     if len(split_scores) == 0:
-        print('@WARNING: no good split points found, skipping')
-        return []
+        # there may be no easy split points
+        print('@WARNING: no easy split points found')
+        # print('NOGAPS ---')
+        # for sub in subs:
+        #     print(sub.content)
+        #     print('---')
+        # print('END NOGAPS')
 
-    best_split_index = split_scores[0]['index']
-    before_split_subs = subs[:best_split_index+1]
-    after_split_subs = subs[best_split_index+1:]
+        if DRY_RUN:
+            return []
+        else:
+            if len(subs) == 2:
+                best_split_index = 1
+            else:
+                assert len(subs) > 2
+                print('@WARNING: falling back to semantic split')
+                with Timer('semantic_split'):
+                    best_split_index = semantic_split_sub_group(subs)
+                assert (best_split_index > 0) and (best_split_index < len(subs))
+    else:
+        best_split_index = split_scores[0]['index']
+
+    before_split_subs = subs[:best_split_index]
+    after_split_subs = subs[best_split_index:]
 
     # recursively divide each split
     time_between = (after_split_subs[0].start - before_split_subs[-1].end).total_seconds()
@@ -271,7 +305,8 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                         ensure_whisper_loaded()
                         with warnings.catch_warnings():
                             warnings.filterwarnings('ignore', 'FP16 is not supported on CPU; using FP32 instead')
-                            whisper_result = whisper_model.transcribe(audio_fn, language='ja', initial_prompt='映画の字幕です。')
+                            with Timer('transcribe'):
+                                whisper_result = whisper_model.transcribe(audio_fn, language='ja', initial_prompt='映画の字幕です。')
                         # pprint.pprint(whisper_result)
 
                     human_text = '\n'.join(sub.content for sub in clip_subs)
@@ -356,7 +391,8 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                 # add machine translation
                 if not DRY_RUN:
                     clip_combined_text = '\n'.join(sub.content for sub in clip_subs)
-                    clip_en_text = translate_to_en(clip_combined_text)
+                    with Timer('translate'):
+                        clip_en_text = translate_to_en(clip_combined_text)
                     print('MACHINE TRANSLATION:')
                     print(clip_en_text)
                     translations.append({
@@ -435,57 +471,69 @@ if __name__ == '__main__':
     assert os.path.isdir(args.output_dir), f'output directory {args.output_dir} does not exist'
 
     CLIP_DURS = []
-    for sdfn in sorted(os.listdir(args.sources_dir)):
-        # check if directory
-        source_dir = os.path.join(args.sources_dir, sdfn)
-        if not os.path.isdir(source_dir):
-            continue
+    try:
+        with Timer('main'):
+            for sdfn in sorted(os.listdir(args.sources_dir)):
+                # check if directory
+                source_dir = os.path.join(args.sources_dir, sdfn)
+                if not os.path.isdir(source_dir):
+                    continue
 
-        # check if source id file exists
-        source_id_fn = os.path.join(source_dir, 'SOURCEID')
-        assert os.path.isfile(source_id_fn), f'source id file {source_id_fn} does not exist'
+                # check if source id file exists
+                source_id_fn = os.path.join(source_dir, 'SOURCEID')
+                assert os.path.isfile(source_id_fn), f'source id file {source_id_fn} does not exist'
 
-        # load source info
-        with open(source_id_fn, 'r', encoding='utf-8') as source_info_file:
-            source_id = source_info_file.read().strip()
+                # load source info
+                with open(source_id_fn, 'r', encoding='utf-8') as source_info_file:
+                    source_id = source_info_file.read().strip()
 
-        print('PROCESSING SOURCE:', source_id, 'IN DIR:', source_dir)
+                print('PROCESSING SOURCE:', source_id, 'IN DIR:', source_dir)
 
-        source_output_dir = os.path.join(args.output_dir, source_id)
-        assert not os.path.exists(source_output_dir), f'source output directory {source_output_dir} already exists'
-        os.mkdir(source_output_dir)
+                source_output_dir = os.path.join(args.output_dir, source_id)
+                assert not os.path.exists(source_output_dir), f'source output directory {source_output_dir} already exists'
+                os.mkdir(source_output_dir)
 
-        for fn in sorted(os.listdir(source_dir)):
-            vid_fn = os.path.join(source_dir, fn)
-            assert not os.path.isdir(vid_fn), f'should not have directory {vid_fn} inside source dir'
-            fn_ext = os.path.splitext(fn)[1]
-            if fn_ext not in ['.mp4', '.mkv', '.webm']:
-                continue
+                for fn in sorted(os.listdir(source_dir)):
+                    vid_fn = os.path.join(source_dir, fn)
+                    assert not os.path.isdir(vid_fn), f'should not have directory {vid_fn} inside source dir'
+                    fn_ext = os.path.splitext(fn)[1]
+                    if fn_ext not in ['.mp4', '.mkv', '.webm']:
+                        continue
 
-            print('PROCESSING VIDEO FILE:', vid_fn)
+                    print('PROCESSING VIDEO FILE:', vid_fn)
 
-            sub_fn = find_matching_subfile(vid_fn, vid_lang, match_uncoded=True)
-            assert sub_fn, 'no matching subtitle file found'
-            print('FOUND SUBTITLE FILE:', sub_fn)
+                    sub_fn = find_matching_subfile(vid_fn, vid_lang, match_uncoded=True)
+                    assert sub_fn, 'no matching subtitle file found'
+                    print('FOUND SUBTITLE FILE:', sub_fn)
 
-            trans_sub_fn = find_matching_subfile(vid_fn, 'en', match_uncoded=False)
-            trans = None
-            if trans_sub_fn:
-                print('found translated subtitle file:', trans_sub_fn)
-                trans_analyzer = EnglishAnalyzer()
-                trans = (trans_sub_fn, trans_analyzer)
+                    trans_sub_fn = find_matching_subfile(vid_fn, 'en', match_uncoded=False)
+                    trans = None
+                    if trans_sub_fn:
+                        print('found translated subtitle file:', trans_sub_fn)
+                        trans_analyzer = EnglishAnalyzer()
+                        trans = (trans_sub_fn, trans_analyzer)
 
-            ja_analyzer = JapaneseAnalyzer()
-            process(source_id, vid_fn, sub_fn, ja_analyzer, trans, source_output_dir)
+                    ja_analyzer = JapaneseAnalyzer()
+                    process(source_id, vid_fn, sub_fn, ja_analyzer, trans, source_output_dir)
+    finally:
+        print('TIMERS:')
+        for name, dt in sorted(global_timers.items(), key=lambda x: x[1], reverse=True):
+            print(f'{name}\t{dt}\t{dt/global_timers["main"]}')
 
-    print('TOTAL CLIP COUNT:', len(CLIP_DURS))
-    print('TOTAL DURATION OF ALL CLIPS:', round(sum(CLIP_DURS)), 'seconds')
+        print('OPENAI API TOKEN USAGE:')
+        from semsplit import semsplit_total_prompt_tokens, semsplit_total_completion_tokens
+        from trans import trans_total_prompt_tokens, trans_total_completion_tokens
+        print('translation:', 'prompt', trans_total_prompt_tokens, 'completion', trans_total_completion_tokens)
+        print('semantic split:', 'prompt', semsplit_total_prompt_tokens, 'completion', semsplit_total_completion_tokens)
 
-    print('CLIP DURATIONS HISTOGRAM:')
-    clip_dur_bucket = Counter()
-    for dur in CLIP_DURS:
-        clip_dur_bucket[round(dur)] += 1
-    cumul = 0
-    for dur, count in sorted(clip_dur_bucket.items()):
-        cumul += count
-        print(f'{dur}\t{100*count/len(CLIP_DURS)}\t{100*cumul/len(CLIP_DURS)}')
+        print('TOTAL CLIP COUNT:', len(CLIP_DURS))
+        print('TOTAL DURATION OF ALL CLIPS:', round(sum(CLIP_DURS)), 'seconds')
+
+        print('CLIP DURATIONS HISTOGRAM:')
+        clip_dur_bucket = Counter()
+        for dur in CLIP_DURS:
+            clip_dur_bucket[round(dur)] += 1
+        cumul = 0
+        for dur, count in sorted(clip_dur_bucket.items()):
+            cumul += count
+            print(f'{dur}\t{100*count/len(CLIP_DURS)}\t{100*cumul/len(CLIP_DURS)}')
