@@ -353,17 +353,18 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                     })
 
                 # add machine translation
-                clip_combined_text = '\n'.join(sub.content for sub in clip_subs)
-                clip_en_text = translate_to_en(clip_combined_text)
-                print('MACHINE TRANSLATION:')
-                print(clip_en_text)
-                translations.append({
-                    'lang': 'en',
-                    'machine': True,
-                    # v1: gpt-4-1106-preview, temp 0, no system msg, prompt 'Translate to English, replying with only the unquoted translation:'
-                    'algo': 'v1',
-                    'text': clip_en_text,
-                })
+                if not DRY_RUN:
+                    clip_combined_text = '\n'.join(sub.content for sub in clip_subs)
+                    clip_en_text = translate_to_en(clip_combined_text)
+                    print('MACHINE TRANSLATION:')
+                    print(clip_en_text)
+                    translations.append({
+                        'lang': 'en',
+                        'machine': True,
+                        # v1: gpt-4-1106-preview, temp 0, no system msg, prompt 'Translate to English, replying with only the unquoted translation:'
+                        'algo': 'v1',
+                        'text': clip_en_text,
+                    })
 
                 clip_info['translations'] = translations
 
