@@ -39,7 +39,7 @@ def semantic_split_sub_group(subs):
     # It was necessary to explicitly tell it to call report_split_index. Using the tool_choice parameter to make it call that would prevent it from explaining its reasoning, which reduces result quality
     prompt = f'At which of these numbered breaks would it be most natural to break these subtitles into two sections, based on the flow of conversation. The goal is that each of the two sections make sense as much as possible on their own. Explain your reasoning, and then report exactly one split index via report_split_index.\n{subs_text}'
     completion = openai_client.chat.completions.create(
-        model='gpt-4-1106-preview',
+        model='gpt-4-0125-preview',
         tools=tools,
         messages=[
             {'role': 'user', 'content': prompt},

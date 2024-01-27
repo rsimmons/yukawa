@@ -12,7 +12,7 @@ TRANS_ALGO = 'v1'
 def translate_to_en(text):
     prompt = f'Translate to English, replying with only the unquoted translation:\n{text}'
     completion = openai_client.chat.completions.create(
-        model='gpt-4-1106-preview',
+        model='gpt-4-0125-preview',
         messages=[
             # adding a system message strangely makes it non-deterministic, and doesn't seem to improve results
             {"role": "user", "content": prompt},
