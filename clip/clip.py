@@ -360,6 +360,18 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                 clip_info['duration'] = dur.total_seconds()
                 CLIP_DURS.append(dur.total_seconds())
 
+                # find gap (in subtitle times) before and after this clip
+                # This is O(N) but so dominated by other stuff it doesn't matter
+                prev_end = None
+                next_start = None
+                for sub in cleaned_subs:
+                    if (sub.end <= clip_subs[0].start) and ((prev_end is None) or (sub.end > prev_end)):
+                        prev_end = sub.end
+                    if (sub.start >= clip_subs[-1].end) and ((next_start is None) or (sub.start < next_start)):
+                        next_start = sub.start
+                clip_info['gap_before'] = (clip_subs[0].start - prev_end).total_seconds() if prev_end else None
+                clip_info['gap_after'] = (next_start - clip_subs[-1].end).total_seconds() if next_start else None
+
                 retimed_subs = []
                 for sub in clip_subs:
                     retimed_subs.append({
