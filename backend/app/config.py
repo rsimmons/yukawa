@@ -1,5 +1,8 @@
 import os
 
+# To generate a random key (e.g. for AUTH_KEY or SESSION_KEY):
+# ''.join(random.choices(string.ascii_letters+string.digits, k=32))
+
 class CommonConfig(object):
     AUTH_TOKEN_EXPIRATION = 10*60
 
@@ -20,6 +23,8 @@ if env == 'development':
         AUTH_URL_PREFIX = 'http://localhost:5173/auth?token='
 
         SESSION_KEY = 'DevSessionKey'
+
+        CORS_ENABLED = True
 elif env == 'production':
     DB_USER = os.environ['DB_USER']
     DB_PASSWORD = os.environ['DB_PASSWORD']
@@ -36,5 +41,7 @@ elif env == 'production':
         AUTH_URL_PREFIX = 'http://example.com/auth?token='
 
         SESSION_KEY = os.environ['SESSION_KEY']
+
+        CORS_ENABLED = False
 else:
     raise ValueError(f'unknown FLASK_ENV {env!r}')

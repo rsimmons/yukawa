@@ -3,14 +3,12 @@ from functools import wraps
 from flask import request, jsonify, render_template, g
 import jwt
 import humanize
+from email_validator import validate_email, EmailNotValidError
 
 from app import app, log, db
 from app.email import send_email
 
 AUTH_TOKEN_EXPIRATION = 10*60
-
-# to generate a random key:
-# ''.join(random.choices(string.ascii_letters+string.digits, k=32))
 
 # note that while named "login", this is also used to login the first time,
 # with implicit signup
@@ -18,11 +16,19 @@ AUTH_TOKEN_EXPIRATION = 10*60
 def login():
     req = request.get_json()
 
-    email = req['email']
+    raw_email = req['email']
 
-    log(f'login attempt to {email!r}')
+    log(f'login attempt to {raw_email!r}')
 
-    # TODO: validate email address
+    try:
+        email_info = validate_email(raw_email, check_deliverability=False)
+        email = email_info.normalized
+        log(f'email valid, normalized to {email!r}')
+    except EmailNotValidError as e:
+        log(f'email invalid')
+        return jsonify({
+            'status': 'invalid_email',
+        })
 
     current_time = int(time.time())
 
@@ -81,11 +87,11 @@ def auth():
         payload = jwt.decode(token, app.config['AUTH_KEY'], algorithms=['HS256'])
     except jwt.exceptions.DecodeError:
         return jsonify({
-            'status': 'invalid token',
+            'status': 'invalid_token',
         })
     except jwt.exceptions.ExpiredSignatureError:
         return jsonify({
-            'status': 'token expired',
+            'status': 'expired_token',
         })
 
     # extract user_id from session token
