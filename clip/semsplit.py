@@ -56,7 +56,8 @@ def semantic_split_sub_group(subs):
     choice0 = completion.choices[0]
     print('choices[0]:', choice0)
     assert choice0.finish_reason == 'tool_calls'
-    assert len(choice0.message.tool_calls) == 1
+    if len(choice0.message.tool_calls) != 1:
+        return None
     tc = choice0.message.tool_calls[0]
     assert tc.function.name == 'report_split_index'
     fn_args = json.loads(tc.function.arguments)

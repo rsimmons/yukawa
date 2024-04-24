@@ -152,6 +152,9 @@ def divide_group(subs, margin_before, margin_after):
                 print('@WARNING: falling back to semantic split')
                 with Timer('semantic_split'):
                     best_split_index = semantic_split_sub_group(subs)
+                    if best_split_index is None:
+                        print('@WARNING: semantic split failed, skipping')
+                        return []
                 assert (best_split_index > 0) and (best_split_index < len(subs))
     else:
         best_split_index = split_scores[0]['index']
