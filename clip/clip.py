@@ -19,7 +19,7 @@ import whisper
 import diff_match_patch as dmp
 
 from semsplit import semantic_split_sub_group
-from trans import translate_to_en, TRANS_ALGO
+from trans import translate_to_en
 from ja import JapaneseAnalyzer
 from en import EnglishAnalyzer
 
@@ -344,13 +344,14 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                         print('--')
 
                 clip_id = random_id()
-                clip_fn = os.path.join(output_dir, f'clip-{clip_id}.mp4')
+                clip_fn = f'clip-{clip_id}.mp4'
+                clip_abs_path = os.path.join(output_dir, clip_fn)
 
                 if DRY_RUN:
-                    print('CLIP FILE (NOT CREATED):', clip_fn)
+                    print('CLIP FILE (NOT CREATED):', clip_abs_path)
                 else:
-                    extract_video(vid_fn, clip_start, clip_end, clip_fn)
-                    print('CLIP FILE:', clip_fn)
+                    extract_video(vid_fn, clip_start, clip_end, clip_abs_path)
+                    print('CLIP FILE:', clip_abs_path)
 
 
                 # make clip info object
@@ -359,6 +360,7 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                 # these are redundant, but for sanity checking
                 clip_info['clip_id'] = clip_id
                 clip_info['source_id'] = source_id
+                clip_info['media'] = [clip_fn]
 
                 clip_info['duration'] = dur.total_seconds()
                 CLIP_DURS.append(dur.total_seconds())
@@ -399,7 +401,7 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                         })
                     translations.append({
                         'lang': 'en',
-                        'machine': False,
+                        'src': 'subs',
                         'subs': retimed_trans_subs,
                     })
 
@@ -407,13 +409,12 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
                 if not DRY_RUN:
                     clip_combined_text = '\n'.join(sub.content for sub in clip_subs)
                     with Timer('translate'):
-                        clip_en_text = translate_to_en(clip_combined_text)
+                        clip_en_text, trans_src = translate_to_en(clip_combined_text)
                     print('MACHINE TRANSLATION:')
                     print(clip_en_text)
                     translations.append({
                         'lang': 'en',
-                        'machine': True,
-                        'algo': TRANS_ALGO,
+                        'src': trans_src,
                         'text': clip_en_text,
                     })
 
@@ -421,9 +422,12 @@ def process(source_id, vid_fn, sub_fn, analyzer, trans, output_dir):
 
                 clip_info['asr_similarity'] = sim
 
-                info_fn = os.path.join(output_dir, f'clip-{clip_id}.json')
-                with open(info_fn, 'w', encoding='utf-8') as info_file:
-                    info_file.write(json.dumps(clip_info, indent=2, ensure_ascii=False))
+                clip_info['time_created'] = datetime.datetime.now().isoformat()
+
+                # append clip into to clips.jsonl
+                with open(os.path.join(output_dir, 'clips.jsonl'), 'a', encoding='utf-8') as clips_jsonl_file:
+                    clips_jsonl_file.write(json.dumps(clip_info, ensure_ascii=False))
+                    clips_jsonl_file.write('\n')
 
                 print('END CLIP')
                 print()
