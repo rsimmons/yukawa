@@ -1,11 +1,19 @@
 import { ThunkAction, ThunkDispatch, UnknownAction, createAction, createReducer } from '@reduxjs/toolkit'
-import { APIError, APILoginResponse, apiAuth, apiGetUserInfo, apiLogin } from './api';
+import { APIError, APILoginResponse, apiAuth, apiGetRandomClip, apiGetUserInfo, apiLogin } from './api';
 
 const SESSION_TOKEN_LOCAL_STORAGE_KEY = 'yukawa-session-token';
 
 export interface SessionState {
   readonly sessionToken: string;
   readonly email: string;
+  readonly page: {
+    readonly type: 'home';
+  } | {
+    readonly type: 'clip';
+    readonly clip: {
+      readonly mediaUrl: string;
+    } | null;
+  };
 }
 
 export type CoarseState = {
@@ -91,9 +99,39 @@ export const thunkLogIn = (email: string, onUpdate: (resp: APILoginResponse) => 
   }
 };
 
+export const loadClip = async (dispatch: ThunkDispatch<RootState, unknown, UnknownAction>, sessionToken: string) => {
+  const clipInfo = await apiGetRandomClip(sessionToken)
+  dispatch(actionShowClip({
+    mediaUrl: clipInfo.mediaUrl,
+  }));
+}
+
+export const thunkLoadClip = (): AppThunk => async (dispatch, getState) => {
+  const state = getState();
+  if (state.type !== 'loggedIn') {
+    throw new Error('invalid state');
+  }
+  const sessionToken = state.sess.sessionToken;
+  await loadClip(dispatch, sessionToken);
+}
+
+export const thunkViewClips = (): AppThunk => async (dispatch, getState) => {
+  const state = getState();
+  if (state.type !== 'loggedIn') {
+    throw new Error('invalid state');
+  }
+
+  dispatch(actionEnterViewClips());
+
+  const sessionToken = state.sess.sessionToken;
+  await loadClip(dispatch, sessionToken);
+};
+
 export const actionCrash = createAction<string>('crash');
 export const actionBecomeLoggingIn = createAction('becomeLoggingIn');
 export const actionBecomeLoggedIn = createAction<{sessionToken: string, email: string}>('becomeLoggedIn');
+export const actionEnterViewClips = createAction('viewClips');
+export const actionShowClip = createAction<{mediaUrl: string}>('showClip');
 
 const rootReducer = createReducer<RootState>(initialState, (builder) => {
   builder
@@ -116,10 +154,50 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
         sess: {
           sessionToken: action.payload.sessionToken,
           email: action.payload.email,
+          page: {
+            type: 'home',
+          },
         },
         status: state.status,
       };
     })
+    .addCase(actionEnterViewClips, (state, _action) => {
+      if (state.type !== 'loggedIn') {
+        return state;
+      }
+      return {
+        type: 'loggedIn',
+        sess: {
+          ...state.sess,
+          page: {
+            type: 'clip',
+            clip: null,
+          },
+        },
+        status: state.status,
+      };
+    })
+    .addCase(actionShowClip, (state, action) => {
+      if (state.type !== 'loggedIn') {
+        return state;
+      }
+      if (state.sess.page.type !== 'clip') {
+        return state;
+      }
+      return {
+        type: 'loggedIn',
+        sess: {
+          ...state.sess,
+          page: {
+            type: 'clip',
+            clip: {
+              mediaUrl: action.payload.mediaUrl,
+            },
+          },
+        },
+        status: state.status,
+      };
+    });
 });
 
 export default rootReducer;

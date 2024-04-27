@@ -1,3 +1,5 @@
+import random
+
 from flask import jsonify, g
 from flask_cors import CORS
 
@@ -30,4 +32,13 @@ def user():
         'status': 'ok',
         'user_id': g.user_id,
         'email': result.email,
+    })
+
+@app.route('/random_clip', methods=['POST'])
+@require_session
+def random_clip():
+    clips = app.config['CLIPS']
+    clip = random.choice(clips)
+    return jsonify({
+        'media_url': app.config['CLIP_URL_PREFIX'] + clip['source_id'] + '/' + clip['media'][0],
     })

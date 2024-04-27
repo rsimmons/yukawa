@@ -3,6 +3,7 @@ import { useAppDispatch } from "./store";
 import { RootState, thunkInit } from "./reducers";
 import Login from './Login.tsx';
 import Home from './Home.tsx';
+import Clip from './Clip.tsx';
 import './Root.css';
 import { useSelector } from "react-redux";
 
@@ -15,6 +16,26 @@ function Crashed() {
   });
 
   return <div>Crashed: {msg}</div>;
+}
+
+function LoggedIn() {
+  const sessState = useSelector((state: RootState) => {
+    if (state.type !== 'loggedIn') {
+      throw new Error('invalid state');
+    }
+    return state.sess;
+  });
+
+  switch (sessState.page.type) {
+    case 'home':
+      return <Home />;
+
+    case 'clip':
+      return <Clip />;
+
+    default:
+      throw new Error('invalid page');
+  }
 }
 
 export default function Root() {
@@ -45,7 +66,7 @@ export default function Root() {
             return <Login />;
 
           case 'loggedIn':
-            return <Home />;
+            return <LoggedIn />;
 
           case 'crashed':
             return <Crashed />;

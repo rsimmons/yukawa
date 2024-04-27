@@ -61,3 +61,15 @@ export const apiGetUserInfo = async (sessionToken: string): Promise<APIUserInfo>
   const resp = await post('/user', {}, sessionToken);
   return resp;
 };
+
+export interface APIClipInfo {
+  mediaUrl: string,
+}
+
+export const apiGetRandomClip = async (sessionToken: string): Promise<APIClipInfo> => {
+  const resp = await post('/random_clip', {}, sessionToken);
+
+  return {
+    mediaUrl: resp.media_url,
+  };
+}

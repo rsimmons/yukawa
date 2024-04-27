@@ -1,13 +1,22 @@
 import os
+import json
 
 # To generate a random key (e.g. for AUTH_KEY or SESSION_KEY):
 # ''.join(random.choices(string.ascii_letters+string.digits, k=32))
+
+# read clips from all_clips.json
+# reading this here is a bit of a hack?
+with open('all_clips.json') as f:
+    all_clips = json.load(f)
 
 class CommonConfig(object):
     AUTH_TOKEN_EXPIRATION = 10*60
 
     AUTH_EMAIL_SUBJECT = 'Log in to Yukawa'
     AUTH_EMAIL_SENDER = 'Yukawa <russ@rsimmons.org>'
+
+    CLIPS = all_clips
+    CLIP_URL_PREFIX = 'https://yukawa-clips.s3.us-west-2.amazonaws.com/ja/'
 
 env = os.environ.get('FLASK_ENV')
 print(f'FLASK_ENV is {env!r}')
