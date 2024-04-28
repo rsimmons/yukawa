@@ -100,9 +100,14 @@ export const thunkLogIn = (email: string, onUpdate: (resp: APILoginResponse) => 
 };
 
 export const loadClip = async (dispatch: ThunkDispatch<RootState, unknown, UnknownAction>, sessionToken: string) => {
-  const clipInfo = await apiGetRandomClip(sessionToken)
+  const clipInfo = await apiGetRandomClip(sessionToken);
+
+  // fetch entire clip as blob, make object URL
+  const blob = await fetch(clipInfo.mediaUrl).then((r) => r.blob());
+  const mediaUrl = URL.createObjectURL(blob);
+
   dispatch(actionShowClip({
-    mediaUrl: clipInfo.mediaUrl,
+    mediaUrl,
   }));
 }
 
