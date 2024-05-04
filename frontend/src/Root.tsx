@@ -55,26 +55,23 @@ export default function Root() {
   });
 
   return (
-    <>
-      <h1>Yukawa</h1>
-      <>{(() => {
-        switch (stateType) {
-          case 'initial':
-            return <div>Loading...</div>;
+    <>{(() => {
+      switch (stateType) {
+        case 'initial':
+          return <div>Loading...</div>;
 
-          case 'loggingIn':
-            return <Login />;
+        case 'loggingIn':
+          return <Login />;
 
-          case 'loggedIn':
-            return <LoggedIn />;
+        case 'loggedIn':
+          return <LoggedIn />;
 
-          case 'crashed':
-            return <Crashed />;
+        case 'crashed':
+          return <Crashed />;
 
-          default:
-            throw new Error('invalid state');
-        }
-      })()}</>
-    </>
+        default:
+          throw new Error('invalid state');
+      }
+    })()}</>
   );
 }

@@ -1,0 +1,71 @@
+.Study-video {
+  display: block;
+  width: 100%;
+}
+
+.Study-trans {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.Study-transcription, .Study-translation {
+  flex: 1 0 0;
+  text-align: center;
+  white-space: pre-wrap;
+  padding: 0 1rem;
+}
+
+.Study-trans-sep {
+  flex: 0 0 auto;
+  width: 1px;
+  background-color: #ccc;
+}
+
+.Study-pad {
+  height: 8rem;
+}
+
+.Study-controls {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  min-height: 8rem;
+  padding: 1rem;
+  box-sizing: border-box;
+  background: white;
+}
+
+.Study-controls-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.Study-controls-instructions {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.Study-controls-buttons {
+  display: flex;
+  justify-content: center;
+}
+
+.Study-controls-buttons > * {
+  margin: 0 0.25rem;
+}
+
+.Study-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1.5rem;
+  border: 1px solid #ccc;
+  border-radius: 0.25rem;
+  background-color: #fff;
+  cursor: pointer;
+}
+
+.Study-button:hover {
+  background-color: #f0f0f0;
+}

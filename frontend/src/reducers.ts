@@ -3,6 +3,12 @@ import { APIError, APILoginResponse, apiAuth, apiGetRandomClip, apiGetUserInfo, 
 
 const SESSION_TOKEN_LOCAL_STORAGE_KEY = 'yukawa-session-token';
 
+export interface StudyQuestion {
+  readonly mediaUrl: string;
+  readonly transcription: string;
+  readonly translation: string;
+}
+
 export interface SessionState {
   readonly sessionToken: string;
   readonly email: string;
@@ -10,11 +16,7 @@ export interface SessionState {
     readonly type: 'home';
   } | {
     readonly type: 'study';
-    readonly question: {
-      readonly mediaUrl: string;
-      readonly transcription: string;
-      readonly translation: string;
-    } | null;
+    readonly question: StudyQuestion | null;
   };
 }
 
