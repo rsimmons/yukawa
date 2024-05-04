@@ -31,7 +31,7 @@ if __name__ == '__main__':
     print('Total clips:', len(clips))
 
     # write clips out to single local JSON file
-    clips_json = json.dumps(clips, indent=2)
+    clips_json = json.dumps(clips, indent=2, ensure_ascii=False)
     OUT_FN = 'all_clips.json'
     with open(OUT_FN, 'w') as f:
         f.write(clips_json)
