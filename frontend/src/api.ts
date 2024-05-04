@@ -64,6 +64,8 @@ export const apiGetUserInfo = async (sessionToken: string): Promise<APIUserInfo>
 
 export interface APIClipInfo {
   mediaUrl: string,
+  transcription: string,
+  translation: string,
 }
 
 export const apiGetRandomClip = async (sessionToken: string): Promise<APIClipInfo> => {
@@ -71,5 +73,7 @@ export const apiGetRandomClip = async (sessionToken: string): Promise<APIClipInf
 
   return {
     mediaUrl: resp.media_url,
+    transcription: resp.transcription,
+    translation: resp.translation,
   };
 }

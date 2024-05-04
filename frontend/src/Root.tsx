@@ -3,7 +3,7 @@ import { useAppDispatch } from "./store";
 import { RootState, thunkInit } from "./reducers";
 import Login from './Login.tsx';
 import Home from './Home.tsx';
-import Clip from './Clip.tsx';
+import Study from './Study.tsx';
 import './Root.css';
 import { useSelector } from "react-redux";
 
@@ -30,8 +30,8 @@ function LoggedIn() {
     case 'home':
       return <Home />;
 
-    case 'clip':
-      return <Clip />;
+    case 'study':
+      return <Study />;
 
     default:
       throw new Error('invalid page');

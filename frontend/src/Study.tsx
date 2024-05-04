@@ -2,7 +2,7 @@ import { useSelector } from "react-redux";
 import { RootState, SessionState, thunkLoadClip } from "./reducers";
 import { useAppDispatch } from "./store";
 
-export default function Home() {
+export default function Study() {
   const dispatch = useAppDispatch();
 
   const sess: SessionState = useSelector((state: RootState) => {
@@ -12,7 +12,7 @@ export default function Home() {
     return state.sess;
   });
 
-  if (sess.page.type !== 'clip') {
+  if (sess.page.type !== 'study') {
     throw new Error('invalid page');
   }
 
@@ -23,12 +23,14 @@ export default function Home() {
   // show video clip
   return (
     <div>
-      <video width="854" height="480" controls key={sess.page.clip ? sess.page.clip.mediaUrl : 'noclip'}>
-        {sess.page.clip &&
-          <source src={sess.page.clip.mediaUrl} type="video/mp4" />
+      <video width="854" height="480" controls key={sess.page.question ? sess.page.question.mediaUrl : 'noclip'}>
+        {sess.page.question &&
+          <source src={sess.page.question.mediaUrl} type="video/mp4" />
         }
         Your browser does not support the video tag.
       </video>
+      <div>{sess.page.question && sess.page.question.transcription}</div>
+      <div>{sess.page.question && sess.page.question.translation}</div>
       <div><button onClick={handleClickNext}>Next</button></div>
     </div>
   );

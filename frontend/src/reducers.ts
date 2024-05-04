@@ -9,9 +9,11 @@ export interface SessionState {
   readonly page: {
     readonly type: 'home';
   } | {
-    readonly type: 'clip';
-    readonly clip: {
+    readonly type: 'study';
+    readonly question: {
       readonly mediaUrl: string;
+      readonly transcription: string;
+      readonly translation: string;
     } | null;
   };
 }
@@ -108,6 +110,8 @@ export const loadClip = async (dispatch: ThunkDispatch<RootState, unknown, Unkno
 
   dispatch(actionShowClip({
     mediaUrl,
+    transcription: clipInfo.transcription,
+    translation: clipInfo.translation,
   }));
 }
 
@@ -134,9 +138,16 @@ export const thunkViewClips = (): AppThunk => async (dispatch, getState) => {
 
 export const actionCrash = createAction<string>('crash');
 export const actionBecomeLoggingIn = createAction('becomeLoggingIn');
-export const actionBecomeLoggedIn = createAction<{sessionToken: string, email: string}>('becomeLoggedIn');
+export const actionBecomeLoggedIn = createAction<{
+  readonly sessionToken: string;
+  readonly email: string;
+}>('becomeLoggedIn');
 export const actionEnterViewClips = createAction('viewClips');
-export const actionShowClip = createAction<{mediaUrl: string}>('showClip');
+export const actionShowClip = createAction<{
+  readonly mediaUrl: string;
+  readonly transcription: string;
+  readonly translation: string;
+}>('showClip');
 
 const rootReducer = createReducer<RootState>(initialState, (builder) => {
   builder
@@ -175,8 +186,8 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
         sess: {
           ...state.sess,
           page: {
-            type: 'clip',
-            clip: null,
+            type: 'study',
+            question: null,
           },
         },
         status: state.status,
@@ -186,7 +197,7 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
       if (state.type !== 'loggedIn') {
         return state;
       }
-      if (state.sess.page.type !== 'clip') {
+      if (state.sess.page.type !== 'study') {
         return state;
       }
       return {
@@ -194,9 +205,11 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
         sess: {
           ...state.sess,
           page: {
-            type: 'clip',
-            clip: {
+            type: 'study',
+            question: {
               mediaUrl: action.payload.mediaUrl,
+              transcription: action.payload.transcription,
+              translation: action.payload.translation,
             },
           },
         },

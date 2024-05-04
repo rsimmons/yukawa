@@ -39,6 +39,15 @@ def user():
 def random_clip():
     clips = app.config['CLIPS']
     clip = random.choice(clips)
+
+    sorted_trans = sorted(clip['translations'], key=lambda t: (t['src'] == 'subs'), reverse=True)
+    best_trans = sorted_trans[0]
+    translation = best_trans.get('text')
+    if translation is None:
+        translation = '\n'.join(s['text'] for s in best_trans['subs'])
+
     return jsonify({
         'media_url': app.config['CLIP_URL_PREFIX'] + clip['source_id'] + '/' + clip['media'][0],
+        'transcription': '\n'.join(sub['text'] for sub in clip['subs']),
+        'translation': translation,
     })
