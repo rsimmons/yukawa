@@ -1,6 +1,6 @@
 import random
 
-from flask import jsonify, g
+from flask import request, jsonify, g
 from flask_cors import CORS
 
 from app import app, db
@@ -47,7 +47,18 @@ def random_clip():
         translation = '\n'.join(s['text'] for s in best_trans['subs'])
 
     return jsonify({
+        'clip_id': clip['clip_id'],
         'media_url': app.config['CLIP_URL_PREFIX'] + clip['source_id'] + '/' + clip['media'][0],
         'transcription': '\n'.join(sub['text'] for sub in clip['subs']),
         'translation': translation,
+    })
+
+@app.route('/report_clip_understood', methods=['POST'])
+@require_session
+def report_clip_understood():
+    req = request.get_json()
+    print('report_clip_understood:', req)
+
+    return jsonify({
+        'status': 'ok',
     })

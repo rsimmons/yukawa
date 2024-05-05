@@ -1,23 +1,31 @@
 import { ThunkAction, ThunkDispatch, UnknownAction, createAction, createReducer } from '@reduxjs/toolkit'
-import { APIError, APILoginResponse, apiAuth, apiGetRandomClip, apiGetUserInfo, apiLogin } from './api';
+import { APIError, APILoginResponse, apiAuth, apiGetRandomClip, apiGetUserInfo, apiLogin, apiReportClipUnderstood } from './api';
 
 const SESSION_TOKEN_LOCAL_STORAGE_KEY = 'yukawa-session-token';
 
 export interface StudyQuestion {
+  readonly clipId: string;
   readonly mediaUrl: string;
   readonly transcription: string;
   readonly translation: string;
 }
 
+export type StudyStage = 'input' | 'grading_allowed' | 'grading' | 'loading_next';
+
+export type InternalPage = {
+  readonly type: 'home';
+} | {
+  readonly type: 'studyLoading';
+} | {
+  readonly type: 'study';
+  readonly question: StudyQuestion;
+  readonly stage: StudyStage;
+};
+
 export interface SessionState {
   readonly sessionToken: string;
   readonly email: string;
-  readonly page: {
-    readonly type: 'home';
-  } | {
-    readonly type: 'study';
-    readonly question: StudyQuestion | null;
-  };
+  readonly page: InternalPage;
 }
 
 export type CoarseState = {
@@ -110,31 +118,39 @@ export const loadClip = async (dispatch: ThunkDispatch<RootState, unknown, Unkno
   const blob = await fetch(clipInfo.mediaUrl).then((r) => r.blob());
   const mediaUrl = URL.createObjectURL(blob);
 
-  dispatch(actionShowClip({
+  dispatch(actionStudyLoadQuestion({
+    clipId: clipInfo.clipId,
     mediaUrl,
     transcription: clipInfo.transcription,
     translation: clipInfo.translation,
   }));
 }
 
-export const thunkLoadClip = (): AppThunk => async (dispatch, getState) => {
+export const thunkEnterStudy = (): AppThunk => async (dispatch, getState) => {
   const state = getState();
   if (state.type !== 'loggedIn') {
     throw new Error('invalid state');
   }
+
+  dispatch(actionEnterStudyLoading());
+
   const sessionToken = state.sess.sessionToken;
   await loadClip(dispatch, sessionToken);
-}
+};
 
-export const thunkViewClips = (): AppThunk => async (dispatch, getState) => {
+export type UnderstoodGrade = 'no' | 'mostly' | 'fully';
+export const thunkSubmitGrade = (clipId: string, grade: UnderstoodGrade): AppThunk => async (dispatch, getState) => {
+  dispatch(actionStudyLoadingNext());
+
   const state = getState();
   if (state.type !== 'loggedIn') {
     throw new Error('invalid state');
   }
 
-  dispatch(actionEnterViewClips());
-
   const sessionToken = state.sess.sessionToken;
+
+  await apiReportClipUnderstood(sessionToken, clipId, grade);
+
   await loadClip(dispatch, sessionToken);
 };
 
@@ -144,12 +160,16 @@ export const actionBecomeLoggedIn = createAction<{
   readonly sessionToken: string;
   readonly email: string;
 }>('becomeLoggedIn');
-export const actionEnterViewClips = createAction('viewClips');
-export const actionShowClip = createAction<{
+export const actionEnterStudyLoading = createAction('enterStudyLoading');
+export const actionStudyLoadQuestion = createAction<{
+  readonly clipId: string;
   readonly mediaUrl: string;
   readonly transcription: string;
   readonly translation: string;
-}>('showClip');
+}>('loadQuestion');
+export const actionStudyAllowGrading = createAction('studyAllowGrading');
+export const actionStudyRevealAnswer = createAction('studyRevealAnswer');
+export const actionStudyLoadingNext = createAction('studyLoadingNext');
 
 const rootReducer = createReducer<RootState>(initialState, (builder) => {
   builder
@@ -179,7 +199,7 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
         status: state.status,
       };
     })
-    .addCase(actionEnterViewClips, (state, _action) => {
+    .addCase(actionEnterStudyLoading, (state, _action) => {
       if (state.type !== 'loggedIn') {
         return state;
       }
@@ -188,18 +208,17 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
         sess: {
           ...state.sess,
           page: {
-            type: 'study',
-            question: null,
+            type: 'studyLoading',
           },
         },
         status: state.status,
       };
     })
-    .addCase(actionShowClip, (state, action) => {
+    .addCase(actionStudyLoadQuestion, (state, action) => {
       if (state.type !== 'loggedIn') {
         return state;
       }
-      if (state.sess.page.type !== 'study') {
+      if (!((state.sess.page.type === 'study') || (state.sess.page.type === 'studyLoading'))) {
         return state;
       }
       return {
@@ -209,10 +228,78 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
           page: {
             type: 'study',
             question: {
+              clipId: action.payload.clipId,
               mediaUrl: action.payload.mediaUrl,
               transcription: action.payload.transcription,
               translation: action.payload.translation,
             },
+            stage: 'input',
+          },
+        },
+        status: state.status,
+      };
+    })
+    .addCase(actionStudyAllowGrading, (state) => {
+      if (state.type !== 'loggedIn') {
+        return state;
+      }
+      if (state.sess.page.type !== 'study') {
+        return state;
+      }
+      if (state.sess.page.stage !== 'input') {
+        return state;
+      }
+      return {
+        type: 'loggedIn',
+        sess: {
+          ...state.sess,
+          page: {
+            ...state.sess.page,
+            stage: 'grading_allowed',
+          },
+        },
+        status: state.status,
+      };
+    })
+    .addCase(actionStudyRevealAnswer, (state) => {
+      if (state.type !== 'loggedIn') {
+        return state;
+      }
+      if (state.sess.page.type !== 'study') {
+        return state;
+      }
+      if (state.sess.page.stage !== 'grading_allowed') {
+        return state;
+      }
+      return {
+        type: 'loggedIn',
+        sess: {
+          ...state.sess,
+          page: {
+            ...state.sess.page,
+            stage: 'grading',
+          },
+        },
+        status: state.status,
+      };
+    })
+    .addCase(actionStudyLoadingNext, (state) => {
+      if (state.type !== 'loggedIn') {
+        return state;
+      }
+      if (state.sess.page.type !== 'study') {
+        return state;
+      }
+      if (state.sess.page.stage !== 'grading') {
+        return state;
+      }
+      return {
+        type: 'loggedIn',
+        sess: {
+          ...state.sess,
+          page: {
+            ...state.sess.page,
+            stage: 'loading_next',
           },
         },
         status: state.status,

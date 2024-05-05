@@ -30,6 +30,9 @@ function LoggedIn() {
     case 'home':
       return <Home />;
 
+    case 'studyLoading':
+      return <div>Loading...</div>;
+
     case 'study':
       return <Study />;
 

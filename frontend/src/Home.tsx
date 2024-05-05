@@ -1,5 +1,5 @@
 import { useSelector } from "react-redux";
-import { RootState, SessionState, thunkViewClips } from "./reducers";
+import { RootState, SessionState, thunkEnterStudy } from "./reducers";
 import { useAppDispatch } from "./store";
 
 export default function Home() {
@@ -13,7 +13,7 @@ export default function Home() {
   });
 
   const handleClickClips = () => {
-    dispatch(thunkViewClips());
+    dispatch(thunkEnterStudy());
   };
 
   return (

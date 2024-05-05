@@ -1,16 +1,37 @@
 import { useSelector } from "react-redux";
-import { RootState, SessionState, StudyQuestion, thunkLoadClip } from "./reducers";
-import { AppDispatch, useAppDispatch } from "./store";
+import { InternalPage, RootState, UnderstoodGrade, actionStudyAllowGrading, actionStudyRevealAnswer, thunkSubmitGrade } from "./reducers";
+import { useAppDispatch } from "./store";
 import { useEffect, useRef } from "react";
 import './Study.css';
 
-function StudyLoading() {
-  return <div>Loading...</div>;
+function StudyButton(props: {text: string, shortcut?: string, onClick: () => void}) {
+  return (
+    <button className="Study-button" onClick={props.onClick}>{props.text}{props.shortcut && (
+      <span className="Study-button-shortcut"> {props.shortcut}</span>
+    )}</button>
+  );
 }
 
-function StudyLoaded({dispatch, question}: {dispatch: AppDispatch, question: StudyQuestion}) {
-  const handleClickNext = () => {
-    dispatch(thunkLoadClip());
+export default function Study() {
+  const dispatch = useAppDispatch();
+
+  const page: InternalPage = useSelector((state: RootState) => {
+    if (state.type !== 'loggedIn') {
+      throw new Error('invalid state');
+    }
+    return state.sess.page;
+  });
+
+  if (page.type !== 'study') {
+    throw new Error('invalid page');
+  }
+
+  const handleRevealAnswer = () => {
+    dispatch(actionStudyRevealAnswer());
+  };
+
+  const handleGrade = (grade: UnderstoodGrade) => {
+    dispatch(thunkSubmitGrade(page.question.clipId, grade));
   };
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -22,53 +43,97 @@ function StudyLoaded({dispatch, question}: {dispatch: AppDispatch, question: Stu
           videoRef.current.currentTime = 0;
           videoRef.current.play();
         }
+      } else if (event.key === ' ') {
+        if (page.stage === 'grading_allowed') {
+          handleRevealAnswer();
+        }
+      } else if (event.key === '1') {
+        if (page.stage === 'grading') {
+          handleGrade('no');
+        }
+      } else if (event.key === '2') {
+        if (page.stage === 'grading') {
+          handleGrade('mostly');
+        }
+      } else if (event.key === '3') {
+        if (page.stage === 'grading') {
+          handleGrade('fully');
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
+  });
 
+  const handleVideoTimeUpdate = () => {
+    if (videoRef.current) {
+      if (videoRef.current.currentTime > (videoRef.current.duration-0.5)) {
+        if (page.stage === 'input') {
+          dispatch(actionStudyAllowGrading());
+        }
+      }
+    }
+  };
+
+  const question = page.question;
   return (
     <div>
-      <video className="Study-video" controls key={question.mediaUrl} autoPlay={true} ref={videoRef}>
+      <video className="Study-video" controls key={question.mediaUrl} autoPlay={true} ref={videoRef} onTimeUpdate={handleVideoTimeUpdate}>
         <source src={question.mediaUrl} type="video/mp4" />
         Your browser does not support the video tag.
       </video>
-      <div className="Study-trans">
-        <div className="Study-transcription">{question.transcription}</div>
-        <div className="Study-trans-sep"></div>
-        <div className="Study-translation">{question.translation}</div>
-      </div>
-      <div className="Study-pad"></div>
-      <div className="Study-controls">
-        <div className="Study-controls-inner">
-          <div className="Study-controls-instructions">Push the buttons</div>
-          <div className="Study-controls-buttons">
-            <div><button className="Study-button" onClick={handleClickNext}>Next</button></div>
-            <div><button className="Study-button" >Foo</button></div>
-          </div>
+      {((page.stage === 'grading') || (page.stage === 'loading_next')) && (
+        <div className="Study-trans">
+          <div className="Study-transcription">{question.transcription}</div>
+          <div className="Study-trans-sep"></div>
+          <div className="Study-translation">{question.translation}</div>
         </div>
-      </div>
+      )}
+      <div className="Study-pad"></div>
+      {(() => {
+        switch (page.stage) {
+          case 'input':
+            return (
+              <div className="Study-controls">
+                <div className="Study-controls-instructions">Listen carefully</div>
+              </div>
+            );
+
+          case 'grading_allowed':
+            return (
+              <div className="Study-controls">
+                <div className="Study-controls-instructions">Could you understand it? [R]eplay if needed</div>
+                <div className="Study-controls-buttons">
+                  <StudyButton text="Reveal Subtitles" shortcut="[space]" onClick={handleRevealAnswer} />
+                </div>
+              </div>
+            );
+
+          case 'grading':
+            return (
+              <div className="Study-controls">
+                <div className="Study-controls-instructions">Did you understand it correctly?</div>
+                <div className="Study-controls-buttons">
+                  <StudyButton text="No" shortcut="[1]" onClick={() => {handleGrade('no')}} />
+                  <StudyButton text="Mostly" shortcut="[2]" onClick={() => {handleGrade('mostly')}} />
+                  <StudyButton text="Fully" shortcut="[3]" onClick={() => {handleGrade('fully')}} />
+                </div>
+              </div>
+            );
+
+          case 'loading_next':
+            return (
+              <div className="Study-controls">
+                <div className="Study-controls-instructions">Loading...</div>
+              </div>
+            );
+
+          default:
+            throw new Error('invalid stage');
+        }
+      })()}
     </div>
   );
-}
-
-export default function Study() {
-  const dispatch = useAppDispatch();
-
-  const sess: SessionState = useSelector((state: RootState) => {
-    if (state.type !== 'loggedIn') {
-      throw new Error('invalid state');
-    }
-    return state.sess;
-  });
-
-  if (sess.page.type !== 'study') {
-    throw new Error('invalid page');
-  }
-
-  const question = sess.page.question;
-  return question ? <StudyLoaded dispatch={dispatch} question={question} /> : <StudyLoading />;
 }

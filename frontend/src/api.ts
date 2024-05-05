@@ -63,17 +63,24 @@ export const apiGetUserInfo = async (sessionToken: string): Promise<APIUserInfo>
 };
 
 export interface APIClipInfo {
-  mediaUrl: string,
-  transcription: string,
-  translation: string,
+  clipId: string;
+  mediaUrl: string;
+  transcription: string;
+  translation: string;
 }
 
 export const apiGetRandomClip = async (sessionToken: string): Promise<APIClipInfo> => {
   const resp = await post('/random_clip', {}, sessionToken);
 
   return {
+    clipId: resp.clip_id,
     mediaUrl: resp.media_url,
     transcription: resp.transcription,
     translation: resp.translation,
   };
-}
+};
+
+export type APIUnderstoodGrade = 'no' | 'mostly' | 'fully';
+export const apiReportClipUnderstood = async (sessionToken: string, clipId: string, grade: APIUnderstoodGrade): Promise<void> => {
+  await post('/report_clip_understood', { clip_id: clipId, grade }, sessionToken);
+};
