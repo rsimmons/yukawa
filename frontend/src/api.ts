@@ -5,7 +5,13 @@ export class APIError extends Error {
   }
 }
 
-const API_ENDPOINT = 'http://localhost:4649';
+let API_ENDPOINT: string;
+if (import.meta.env.MODE === 'development') {
+  const loc = window.location;
+  API_ENDPOINT = `${loc.protocol}//${loc.hostname}:4649`
+} else {
+  API_ENDPOINT = 'https://api.example.com';
+}
 
 const post = async(path: string, params: any, sessionToken?: string): Promise<any> => {
   let response: Response;
