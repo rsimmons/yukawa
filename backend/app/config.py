@@ -6,7 +6,7 @@ import json
 
 # read clips from all_clips.json
 # reading this here is a bit of a hack?
-with open('all_clips.json') as f:
+with open('resources/all_clips.json') as f:
     all_clips = json.load(f)
 
 class CommonConfig(object):
