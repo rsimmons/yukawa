@@ -9,3 +9,5 @@ export const useEffectOnce = (effect: () => void) => {
     }
   }, []);
 }
+
+export const touchAvail = ('ontouchstart' in window);

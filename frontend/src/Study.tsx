@@ -2,11 +2,12 @@ import { useSelector } from "react-redux";
 import { InternalPage, RootState, UnderstoodGrade, actionStudyAllowGrading, actionStudyRevealAnswer, thunkSubmitGrade } from "./reducers";
 import { useAppDispatch } from "./store";
 import { useEffect, useRef } from "react";
+import { touchAvail } from "./util";
 import './Study.css';
 
 function StudyButton(props: {text: string, shortcut?: string, onClick: () => void}) {
   return (
-    <button className="Study-button" onClick={props.onClick}>{props.text}{props.shortcut && (
+    <button className="Study-button" onClick={props.onClick}>{props.text}{props.shortcut && !touchAvail && (
       <span className="Study-button-shortcut"> {props.shortcut}</span>
     )}</button>
   );
@@ -77,10 +78,20 @@ export default function Study() {
     }
   };
 
+  const handleVideoClick = () => {
+    if (videoRef.current) {
+      if (videoRef.current.paused) {
+        videoRef.current.play();
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  };
+
   const question = page.question;
   return (
     <div>
-      <video className="Study-video" controls key={question.mediaUrl} autoPlay={true} ref={videoRef} onTimeUpdate={handleVideoTimeUpdate}>
+      <video className="Study-video" playsInline key={question.mediaUrl} autoPlay={true} ref={videoRef} onTimeUpdate={handleVideoTimeUpdate} onClick={handleVideoClick}>
         <source src={question.mediaUrl} type="video/mp4" />
         Your browser does not support the video tag.
       </video>
@@ -104,7 +115,7 @@ export default function Study() {
           case 'grading_allowed':
             return (
               <div className="Study-controls">
-                <div className="Study-controls-instructions">Could you understand it? [R]eplay if needed</div>
+                <div className="Study-controls-instructions">Could you understand it?<br/>{touchAvail ? 'R' : '[R]'}eplay if needed</div>
                 <div className="Study-controls-buttons">
                   <StudyButton text="Reveal Subtitles" shortcut="[space]" onClick={handleRevealAnswer} />
                 </div>

@@ -39,6 +39,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  text-align: center;
 }
 
 .Study-controls-instructions {
@@ -59,13 +60,16 @@
   padding: 0.75rem 1.5rem;
   font-size: 1.5rem;
   border: 1px solid #ccc;
-  border-radius: 0.25rem;
+  border-radius: 0.75rem;
   background-color: #fff;
   cursor: pointer;
+  color: inherit;
 }
 
-.Study-button:hover {
-  background-color: #f0f0f0;
+@media (hover) { /* prevent false hover on mobile Safari */
+  .Study-button:hover {
+    background-color: #f0f0f0;
+  }
 }
 
 .Study-button-shortcut {
