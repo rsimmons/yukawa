@@ -1,6 +1,6 @@
 .env/
 __pycache__/
-resources/
+resources
 
 # Elastic Beanstalk Files
 .elasticbeanstalk/*
