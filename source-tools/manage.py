@@ -38,9 +38,10 @@ def iter_videos(archive_dir, dir, lang):
                     elif simplify_lang_code(related_fn.suffixes[-2]) == f'.{lang}':
                         potential_sub_paths.append(related_fn)
 
-            assert len(potential_sub_paths) <= 1, f'multiple potential subs found for video {p}'
+            if len(potential_sub_paths) > 1:
+                print(f'WARNING: multiple potential subs found for video {p}')
             if potential_sub_paths:
-                subs_fn = potential_sub_paths[0]
+                subs_fn = sorted(potential_sub_paths)[0]
                 vid['captions'] = []
                 with open(subs_fn) as subs_f:
                     cues = webvtt.read_buffer(subs_f)
