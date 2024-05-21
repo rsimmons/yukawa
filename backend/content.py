@@ -1,7 +1,6 @@
 import re
 import yaml
 
-# RE_WORD_OR_BRACKETED = re.compile(r'(?P<word>\w+)|(\[(?P<bword>[^\]]+)\])|(\[(?P<aword>[^\]]+)\]\((?P<aid>[^\)]+)\))')
 RE_WORD_OR_BRACKETED = re.compile(r'(\[(?P<aword>[^\]]+)\]\((?P<aid>[^\)]+)\))|(\[(?P<bword>[^\]]+)\])|(?P<word>\w+)')
 
 class Fragment:
@@ -65,7 +64,7 @@ def validate_content(atoms, fragments):
                 print(frag.text)
                 assert False
 
-def sequence_atoms(atoms, fragments):
+def build_progression(atoms, fragments):
     atom_map = {}
     for atom in atoms:
         atom_map[atom['id']] = atom
@@ -81,37 +80,43 @@ def sequence_atoms(atoms, fragments):
 
     remaining_fragments = set(fragments)
 
+    # items are (atoms_tuple, fragments_unlocked)
+    progression = []
+
     while remaining_atom_ids and remaining_fragments:
-        scored_atoms = []
-        for atom_id in remaining_atom_ids:
-            # determine how many fragments this atom would unlock
-            frags_unlocked = []
-            for frag in remaining_fragments:
-                if all(((a in cumul_atom_ids) or (a == atom_id)) for a in frag.atoms):
-                    frags_unlocked.append(frag)
+        atomset_frags = {}
+        for frag in remaining_fragments:
+            needed_atoms = set(a for a in frag.atoms if a not in cumul_atom_ids)
+            na = tuple(sorted(needed_atoms))
+            atomset_frags.setdefault(na, []).append(frag)
 
-            atom_freq = atom_id_freq.get(atom_id, 0)
+        scored_atomsets = []
+        for atomset, frags in atomset_frags.items():
+            # fewer atoms is better, and more frequent atoms are better
+            score = (len(atomset), -sum(atom_id_freq[a] for a in atomset))
+            scored_atomsets.append((score, atomset, frags))
 
-            score = (len(frags_unlocked), atom_freq)
-
-            scored_atoms.append((score, atom_id, frags_unlocked))
-
-        scored_atoms.sort(reverse=True, key=lambda x: (x[0], x[1]))
+        scored_atomsets.sort(key=lambda x: x[0])
 
         # print('SCORE:', scored_atoms[0])
-        next_atom_id = scored_atoms[0][1]
-        next_frags_unlocked = scored_atoms[0][2]
+        next_atomset = scored_atomsets[0][1]
+        next_frags_unlocked = scored_atomsets[0][2]
 
-        print('NEXT:', next_atom_id)
+        progression.append((next_atomset, next_frags_unlocked))
+
+        print('NEXT:', ', '.join(next_atomset), 'BIGSTEP' if len(next_atomset) > 1 else '')
         for frag in next_frags_unlocked:
             print('    ', frag.plain_text)
         print()
 
-        cumul_atom_ids.add(next_atom_id)
-        remaining_atom_ids.remove(next_atom_id)
+        for next_atom_id in next_atomset:
+            cumul_atom_ids.add(next_atom_id)
+            remaining_atom_ids.remove(next_atom_id)
         remaining_fragments -= set(next_frags_unlocked)
+
+    return progression
 
 if __name__ == '__main__':
     (atoms, fragments) = load_content('es')
     validate_content(atoms, fragments)
-    sequence_atoms(atoms, fragments)
+    build_progression(atoms, fragments)
