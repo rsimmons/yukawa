@@ -32,24 +32,26 @@ def generate_clip(lang, text, voice_lang, voice_name, output_dir):
 
     # generate clip filename based on hash of text
     clip_id = hashlib.md5(text.encode('utf-8')).hexdigest() + '-goog-' + voice.name
+    clip_fn_wav = clip_id + '.wav'
+    clip_fn_mp3 = clip_id + '.mp3'
 
     with tempfile.TemporaryDirectory() as tmpdirname:
-        clip_tmp_fn = os.path.join(tmpdirname, clip_id + '.wav')
+        clip_tmp_wav_path = os.path.join(tmpdirname, clip_fn_wav)
 
         # The response's audio_content is binary.
-        with open(clip_tmp_fn, 'wb') as out:
+        with open(clip_tmp_wav_path, 'wb') as out:
             # Write the response to the output file.
             out.write(response.audio_content)
 
         # encode as mp3
-        clip_tmp_mp3_fn = clip_tmp_fn.replace('.wav', '.mp3')
-        subprocess.run(['lame', '--silent', '-q0', '-V5', clip_tmp_fn, clip_tmp_mp3_fn])
+        clip_tmp_mp3_path = os.path.join(tmpdirname, clip_fn_mp3)
+        subprocess.run(['lame', '--silent', '-q0', '-V5', clip_tmp_wav_path, clip_tmp_mp3_path])
 
         # move to output directory
-        clip_fn = os.path.join(output_dir, clip_id + '.mp3')
-        os.rename(clip_tmp_mp3_fn, clip_fn)
+        clip_mp3_path = os.path.join(output_dir, clip_id + '.mp3')
+        os.rename(clip_tmp_mp3_path, clip_mp3_path)
 
-    return clip_id
+    return clip_fn_mp3
 
 def generate_clips(lang, output_dir):
     while True:
@@ -61,8 +63,8 @@ def generate_clips(lang, output_dir):
             break
 
         for (voice_lang, voice_name) in LANG_VOICES[lang]:
-            clip_id = generate_clip(lang, text, voice_lang, voice_name, output_dir)
-            print(clip_id)
+            clip_fn = generate_clip(lang, text, voice_lang, voice_name, output_dir)
+            print(clip_fn)
 
 parser = argparse.ArgumentParser()
 
