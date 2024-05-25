@@ -19,7 +19,7 @@ def iter_videos(archive_dir, dir, lang):
             yield from iter_videos(archive_dir, p, lang)
         elif p.suffix in ('.webm', '.mp4', '.mkv'):
             vid = {
-                'vid': str(p.relative_to(archive_dir)),
+                'vid_fn': str(p.relative_to(archive_dir)),
             }
 
             # find all files with matching prefix
@@ -41,9 +41,10 @@ def iter_videos(archive_dir, dir, lang):
             if len(potential_sub_paths) > 1:
                 print(f'WARNING: multiple potential subs found for video {p}')
             if potential_sub_paths:
-                subs_fn = sorted(potential_sub_paths)[0]
+                captions_fn = sorted(potential_sub_paths)[0]
+                vid['captions_fn'] = str(captions_fn.relative_to(archive_dir))
                 vid['captions'] = []
-                with open(subs_fn) as subs_f:
+                with open(captions_fn) as subs_f:
                     cues = webvtt.read_buffer(subs_f)
                     for cue in cues:
                         vid['captions'].append({
@@ -81,14 +82,15 @@ def index_captions(archive_dir, lang):
 
     for vid_info in iter_videos(archive_dir, archive_dir / lang, lang):
         if 'captions' in vid_info:
-            print(f'indexing captions: {vid_info["vid"]} ({len(vid_info["captions"])})')
+            print(f'indexing captions: {vid_info["vid_fn"]} ({len(vid_info["captions"])})')
 
             lines = []
             for caption in vid_info['captions']:
                 doc = {
                     'text': caption['text'],
                     'info': {
-                        'vid': vid_info['vid'],
+                        'vid_fn': vid_info['vid_fn'],
+                        'captions_fn': vid_info['captions_fn'],
                         'start': caption['start'],
                         'end': caption['end'],
                     },

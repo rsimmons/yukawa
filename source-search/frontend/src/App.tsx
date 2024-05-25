@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import vtt from 'vtt.js'
 import './App.css'
 
 interface SearchHit {
@@ -8,6 +9,7 @@ interface SearchHit {
   readonly start: number;
   readonly end: number;
   readonly mediaUrl: string;
+  readonly captionsUrl: string;
 }
 
 interface SearchResults {
@@ -23,16 +25,93 @@ const LANG_OPTIONS = [
 
 type VideoState = 'init' | 'seeking' | 'ready';
 
+interface Cue {
+  startTime: number;
+  endTime: number;
+  text: string;
+}
+
+function HitDetails({ hit }: { hit: SearchHit }) {
+  const videoState = useRef<VideoState>('init');
+  const [cues, setCues] = useState<Array<Cue>>([]);
+  const [currentCue, setCurrentCue] = useState<Cue | null>(null);
+
+  const handleVideoCanPlay = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    if (videoState.current === 'init') {
+      videoState.current = 'seeking';
+      event.currentTarget.currentTime = hit.start;
+    } else if (videoState.current === 'seeking') {
+      videoState.current = 'ready';
+      event.currentTarget.play();
+    }
+  };
+
+  const handleVideoTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    const currentTime = video.currentTime;
+    const matchCue = cues.find(cue => (cue.startTime <= currentTime) && (currentTime < cue.endTime));
+    if (matchCue) {
+      setCurrentCue(matchCue);
+    }
+  };
+
+  useEffect(() => {
+    fetch(hit.captionsUrl)
+      .then((response) => response.text())
+      .then((data) => {
+        const cues: Array<Cue> = [];
+        const parser = new vtt.WebVTT.Parser(window, vtt.WebVTT.StringDecoder());
+        parser.oncue = function(cue: Cue) {
+          cues.push(cue);
+        };
+        parser.parse(data);
+        parser.flush();
+        setCues(cues);
+      });
+  }, []);
+
+  useEffect(() => {
+    // scroll to current cue
+    if (currentCue) {
+      const cueElement = document.querySelector('.HitDetails-cue-current');
+      if (cueElement) {
+        cueElement.scrollIntoView();
+      }
+    }
+  }, [currentCue]);
+
+  const handleCueClick = (cue: Cue) => {
+    const video = document.querySelector('video');
+    if (video) {
+      video.currentTime = cue.startTime;
+    }
+  };
+
+  return (
+    <div>
+      <video controls key={hit.id} onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate}>
+        <source src={hit.mediaUrl} type="video/mp4" />
+      </video>
+      <div className="HitDetails-cues">
+        {cues.map((cue) => (
+          <div key={cue.startTime} className={'HitDetails-cue' + ((cue == currentCue) ? ' HitDetails-cue-current' : '')} onClick={() => { handleCueClick(cue) }}>
+            {cue.text}
+          </div>
+        ))}
+      </div>
+    </div>
+);
+}
+
 function App() {
   const [lang, setLang] = useState('es');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResults | null>(null);
   const [selectedHit, setSelectedHit] = useState<SearchHit | null>(null);
-  const videoState = useRef<VideoState>('init');
 
   const updateSearch = (lang: string, query: string) => {
     setSelectedHit(null);
-    videoState.current = 'init';
+
     fetch(`http://localhost:4650/search?lang=${lang}&query=${encodeURIComponent(query)}`)
       .then((response) => response.json())
       .then((data) => {
@@ -60,17 +139,6 @@ function App() {
 
   const handleResultClick = (hit: SearchHit) => {
     setSelectedHit(hit);
-    videoState.current = 'init';
-  };
-
-  const handleVideoCanPlay = (event: React.SyntheticEvent<HTMLVideoElement>) => {
-    if (videoState.current === 'init') {
-      videoState.current = 'seeking';
-      event.currentTarget.currentTime = selectedHit!.start;
-    } else if (videoState.current === 'seeking') {
-      videoState.current = 'ready';
-      event.currentTarget.play();
-    }
   };
 
   return (
@@ -96,13 +164,7 @@ function App() {
         )}
       </div>
       <div className="App-cut-column">
-        {selectedHit && (
-          <div>
-            <video controls key={selectedHit.id} onCanPlay={handleVideoCanPlay}>
-              <source src={selectedHit.mediaUrl} type="video/mp4" />
-            </video>
-          </div>
-        )}
+        {selectedHit && <HitDetails key={selectedHit.id} hit={selectedHit} />}
       </div>
     </div>
   )

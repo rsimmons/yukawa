@@ -82,7 +82,8 @@ def search():
             'end': hit_source['info']['end'],
             'text': hit_source['text'],
             'highlight': hit.get('highlight', {}).get('text', None),
-            'mediaUrl': 'http://localhost:9000/' + hit_source['info']['vid'],
+            'mediaUrl': 'http://localhost:9000/' + hit_source['info']['vid_fn'],
+            'captionsUrl': 'http://localhost:9000/' + hit_source['info']['captions_fn'],
         })
 
     return jsonify(response)

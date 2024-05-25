@@ -24,3 +24,17 @@
 .App-result-selected {
   outline: 1px solid blue;
 }
+
+.HitDetails-cues {
+  height: 10em;
+  overflow-y: scroll;
+}
+
+.HitDetails-cue {
+  scroll-margin-top: 4.5em;
+  margin-top: 0.5em;
+}
+
+.HitDetails-cue-current {
+  background-color: yellow;
+}
