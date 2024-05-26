@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import vtt from 'vtt.js'
 import yaml from 'js-yaml'
+
+import { WindowedAverager } from './util'
 import './App.css'
 
 interface SearchHit {
@@ -53,6 +55,8 @@ function HitDetails({ hit, lang }: { hit: SearchHit, lang: string }) {
   const [clipStart, setClipStart] = useState<number>(hit.start);
   const [clipEnd, setClipEnd] = useState<number>(hit.end);
   const [clipMetadata, setClipMetadata] = useState<string>('');
+  const stopLatencyAverager = useRef(new WindowedAverager(3));
+  const [stopError, setStopError] = useState<string>('');
 
   const setRoundClipStart = (time: number) => {
     setClipStart(roundTime(time));
@@ -70,7 +74,6 @@ function HitDetails({ hit, lang }: { hit: SearchHit, lang: string }) {
   };
 
   const handleVideoCanPlay = (event: React.SyntheticEvent<HTMLVideoElement>) => {
-    console.log('canplay');
     if (videoState.current === 'init') {
       seekTo(hit.start);
     } else if (videoState.current === 'seeking') {
@@ -81,8 +84,16 @@ function HitDetails({ hit, lang }: { hit: SearchHit, lang: string }) {
 
   const handleVideoTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;
-    if (video.currentTime >= clipEnd) {
+    const stopLatencyEstimate = stopLatencyAverager.current.average();
+    if (video.currentTime >= (clipEnd - stopLatencyEstimate)) {
       video.pause();
+      setTimeout(() => {
+        const delta = video.currentTime-clipEnd;
+        const actualLatency = stopLatencyEstimate+delta;
+        console.log('actual stop latency was', actualLatency);
+        stopLatencyAverager.current.add(actualLatency);
+        setStopError(`${Math.round(delta*1000)}ms`);
+      }, 250);
     }
   };
 
@@ -204,7 +215,7 @@ function HitDetails({ hit, lang }: { hit: SearchHit, lang: string }) {
           </div>
         </div>
         <div>
-          <div>&nbsp;</div>
+          <div>{stopError || <span>&nbsp;</span>}</div>
           <div>
             <button className="HitDetails-timing-button" onClick={doReplay}>R</button>
           </div>
