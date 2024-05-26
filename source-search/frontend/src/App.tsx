@@ -8,8 +8,9 @@ interface SearchHit {
   readonly highlight: string;
   readonly start: number;
   readonly end: number;
-  readonly mediaUrl: string;
-  readonly captionsUrl: string;
+  readonly vid_fn: string;
+  readonly media_url: string;
+  readonly captions_url: string;
 }
 
 interface SearchResults {
@@ -23,7 +24,10 @@ const LANG_OPTIONS = [
   'ja',
 ];
 
-type VideoState = 'init' | 'seeking' | 'ready';
+type VideoState =
+  'init' | // initial state, waiting for video to load
+  'seeking' | // a programmatic seek was requested, waiting for canplay event
+  'other'; // we're not waiting for a canplay event
 
 interface Cue {
   startTime: number;
@@ -31,32 +35,56 @@ interface Cue {
   text: string;
 }
 
-function HitDetails({ hit }: { hit: SearchHit }) {
+function approxEquals(a: number, b: number, epsilon: number = 0.01) {
+  return Math.abs(a - b) < epsilon;
+}
+
+function roundTime(time: number) {
+  return Math.round(time * 100) / 100;
+}
+
+function HitDetails({ hit, lang }: { hit: SearchHit, lang: string }) {
   const videoState = useRef<VideoState>('init');
   const [cues, setCues] = useState<Array<Cue>>([]);
   const [currentCue, setCurrentCue] = useState<Cue | null>(null);
+  const [clipStart, setClipStart] = useState<number>(hit.start);
+  const [clipEnd, setClipEnd] = useState<number>(hit.end);
+  const [clipMetadata, setClipMetadata] = useState<string>('');
+
+  const setRoundClipStart = (time: number) => {
+    setClipStart(roundTime(time));
+  };
+  const setRoundClipEnd = (time: number) => {
+    setClipEnd(roundTime(time));
+  };
+
+  const seekTo = (time: number) => {
+    const video = document.querySelector('video');
+    if (video) {
+      videoState.current = 'seeking';
+      video.currentTime = time;
+    }
+  };
 
   const handleVideoCanPlay = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    console.log('canplay');
     if (videoState.current === 'init') {
-      videoState.current = 'seeking';
-      event.currentTarget.currentTime = hit.start;
+      seekTo(hit.start);
     } else if (videoState.current === 'seeking') {
-      videoState.current = 'ready';
+      videoState.current = 'other';
       event.currentTarget.play();
     }
   };
 
   const handleVideoTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;
-    const currentTime = video.currentTime;
-    const matchCue = cues.find(cue => (cue.startTime <= currentTime) && (currentTime < cue.endTime));
-    if (matchCue) {
-      setCurrentCue(matchCue);
+    if (video.currentTime >= clipEnd) {
+      video.pause();
     }
   };
 
   useEffect(() => {
-    fetch(hit.captionsUrl)
+    fetch(hit.captions_url)
       .then((response) => response.text())
       .then((data) => {
         const cues: Array<Cue> = [];
@@ -67,6 +95,11 @@ function HitDetails({ hit }: { hit: SearchHit }) {
         parser.parse(data);
         parser.flush();
         setCues(cues);
+
+        const matchCue = cues.find(cue => approxEquals(cue.startTime, hit.start) && approxEquals(cue.endTime, hit.end));
+        if (matchCue) {
+          setCurrentCue(matchCue);
+        }
       });
   }, []);
 
@@ -83,14 +116,59 @@ function HitDetails({ hit }: { hit: SearchHit }) {
   const handleCueClick = (cue: Cue) => {
     const video = document.querySelector('video');
     if (video) {
-      video.currentTime = cue.startTime;
+      seekTo(cue.startTime);
     }
+    setCurrentCue(cue);
+    setRoundClipStart(cue.startTime);
+    setRoundClipEnd(cue.endTime);
+    setClipMetadata('');
+  };
+
+  const adjustStart = (delta: number) => {
+    const newClipStart = clipStart + delta;
+    setRoundClipStart(newClipStart);
+    seekTo(newClipStart);
+  };
+
+  const adjustEnd = (delta: number) => {
+    const newClipEnd = clipEnd + delta;
+    setRoundClipEnd(newClipEnd);
+    seekTo(Math.max(clipStart, (newClipEnd-0.5)));
+  };
+
+  const doReplay = () => {
+    seekTo(clipStart);
+  };
+
+  const handleCut = () => {
+    fetch('http://localhost:4650/cut', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        lang,
+        vid_fn: hit.vid_fn,
+        start: clipStart,
+        end: clipEnd,
+      }),
+    }).then((response) => response.json()).then((data) => {
+      console.log('cut response', data);
+      if (data.status !== 'ok') {
+        throw new Error('cut failed');
+      }
+      setClipMetadata(data.meta_yaml);
+    });
+  };
+
+  const handleClipMetadataCopy = () => {
+    navigator.clipboard.writeText(clipMetadata);
   };
 
   return (
     <div>
       <video controls key={hit.id} onCanPlay={handleVideoCanPlay} onTimeUpdate={handleVideoTimeUpdate}>
-        <source src={hit.mediaUrl} type="video/mp4" />
+        <source src={hit.media_url} type="video/mp4" />
       </video>
       <div className="HitDetails-cues">
         {cues.map((cue) => (
@@ -99,6 +177,47 @@ function HitDetails({ hit }: { hit: SearchHit }) {
           </div>
         ))}
       </div>
+      <div className="HitDetails-timing-controls">
+        <div className="HitDetails-timing-controls-start">
+          <div>
+            {clipStart}
+          </div>
+          <div>
+            <button className="HitDetails-timing-button" onClick={() => { adjustStart(-1) }}>⇇</button>
+            <button className="HitDetails-timing-button" onClick={() => { adjustStart(-0.03) }}>←</button>
+            <button className="HitDetails-timing-button" onClick={() => { adjustStart(0.03) }}>→</button>
+            <button className="HitDetails-timing-button" onClick={() => { adjustStart(1) }}>⇉</button>
+          </div>
+        </div>
+        <div>
+          <div>&nbsp;</div>
+          <div>
+            <button className="HitDetails-timing-button" onClick={doReplay}>R</button>
+          </div>
+        </div>
+        <div className="HitDetails-timing-controls-end">
+          <div>
+            {clipEnd}
+          </div>
+          <div>
+          <button className="HitDetails-timing-button" onClick={() => { adjustEnd(-1) }}>⇇</button>
+            <button className="HitDetails-timing-button" onClick={() => { adjustEnd(-0.03) }}>←</button>
+            <button className="HitDetails-timing-button" onClick={() => { adjustEnd(0.03) }}>→</button>
+            <button className="HitDetails-timing-button" onClick={() => { adjustEnd(1) }}>⇉</button>
+          </div>
+        </div>
+      </div>
+      {!clipMetadata && (
+        <div className="HitDetails-cut-section">
+          <button className="HitDetails-cut-button" onClick={handleCut}>Cut</button>
+        </div>
+      )}
+      {clipMetadata && (
+        <div className="HitDetails-clip-metadata-section">
+          <div><button onClick={handleClipMetadataCopy} className="HitDetails-cut-button">Copy YAML</button></div>
+          <pre className="HitDetails-clip-metadata">{clipMetadata}</pre>
+        </div>
+      )}
     </div>
 );
 }
@@ -164,7 +283,7 @@ function App() {
         )}
       </div>
       <div className="App-cut-column">
-        {selectedHit && <HitDetails key={selectedHit.id} hit={selectedHit} />}
+        {selectedHit && <HitDetails key={selectedHit.id} lang={lang} hit={selectedHit} />}
       </div>
     </div>
   )

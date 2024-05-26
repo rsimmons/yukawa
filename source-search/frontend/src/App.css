@@ -38,3 +38,33 @@
 .HitDetails-cue-current {
   background-color: yellow;
 }
+
+.HitDetails-timing-controls {
+  margin-top: 2em;
+  text-align: center;
+  display: flex;
+  justify-content: space-evenly;
+}
+
+.HitDetails-timing-button {
+  margin: 0.25em;
+  font-size: 1.5em;
+  width: 2em;
+  height: 2em;
+}
+
+.HitDetails-cut-section, .HitDetails-clip-metadata-section {
+  text-align: center;
+  margin-top: 1em;
+}
+
+.HitDetails-cut-button {
+  font-size: 1.5em;
+  padding: 0.5em 1em;
+}
+
+.HitDetails-clip-metadata {
+  border: 1px solid black;
+  padding: 0.5em;
+  text-align: left;
+}

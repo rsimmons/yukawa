@@ -10,6 +10,9 @@ if env == 'development':
     class Config(CommonConfig):
         CORS_ENABLED = True
         ES_BASE_URL = 'http://localhost:9200'
+        MEDIA_BASE_URL = 'http://localhost:9000/'
+        MEDIA_BASE_DIR = os.path.join(os.getcwd(), '../../../yukawa-sources')
+        CLIP_OUTPUT_DIR = os.path.join(os.getcwd(), '../../../yukawa-clips')
 elif env == 'production':
     class Config(CommonConfig):
         CORS_ENABLED = False
