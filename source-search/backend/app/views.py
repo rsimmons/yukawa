@@ -8,7 +8,6 @@ from io import StringIO
 from flask import request, jsonify, g
 from flask_cors import CORS
 import requests
-import yaml
 
 from app import app
 
@@ -88,6 +87,8 @@ def search():
             'end': hit_source['info']['end'],
             'text': hit_source['text'],
             'highlight': hit.get('highlight', {}).get('text', None),
+            'src_title': hit_source['info']['src_title'],
+            'src_url': hit_source['info']['src_url'],
             'vid_fn': hit_source['info']['vid_fn'], # TODO: this seems hacky to return both this and media_url
             'media_url': app.config['MEDIA_BASE_URL'] + hit_source['info']['vid_fn'],
             'captions_url': app.config['MEDIA_BASE_URL'] + hit_source['info']['captions_fn'],
@@ -145,19 +146,7 @@ def cut():
 
     extract_video(vid_path, start, end, clip_path)
 
-    # dump it on field at a time so that we can choose the order of the fields
-    meta_strio = StringIO()
-    yaml.dump({'file': clip_fn}, meta_strio)
-    yaml.dump({'kind': 'collected'}, meta_strio) # collected as opposed to generated
-    # yaml.dump({'src_title': ''}, meta_strio)
-    # yaml.dump({'src_url': ''}, meta_strio)
-    yaml.dump({'src_path': vid_fn}, meta_strio)
-    yaml.dump({'cut_start': start}, meta_strio)
-    yaml.dump({'cut_end': end}, meta_strio)
-    meta_str = meta_strio.getvalue()
-
     return jsonify({
         'status': 'ok',
-        'clip_id': clip_id,
-        'meta_yaml': meta_str,
+        'clip_fn': clip_fn,
     })

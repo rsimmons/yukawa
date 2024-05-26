@@ -30,7 +30,8 @@ def iter_videos(archive_dir, dir, lang):
                 elif str(related_fn).endswith('.info.json'):
                     with open(related_fn) as info_f:
                         info = json.load(info_f)
-                        vid['title'] = info['title']
+                        vid['src_title'] = info['title']
+                        vid['src_url'] = info['webpage_url']
                 elif related_fn.suffix == '.vtt':
                     if len(related_fn.suffixes) == 1:
                         # no language suffix, assume it is the right language
@@ -93,6 +94,8 @@ def index_captions(archive_dir, lang):
                         'captions_fn': vid_info['captions_fn'],
                         'start': caption['start'],
                         'end': caption['end'],
+                        'src_title': vid_info['src_title'],
+                        'src_url': vid_info['src_url'],
                     },
                 }
                 lines.append(jdump({'index': {}}) + '\n')

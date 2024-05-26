@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import vtt from 'vtt.js'
+import yaml from 'js-yaml'
 import './App.css'
 
 interface SearchHit {
@@ -8,6 +9,8 @@ interface SearchHit {
   readonly highlight: string;
   readonly start: number;
   readonly end: number;
+  readonly src_title: string;
+  readonly src_url: string;
   readonly vid_fn: string;
   readonly media_url: string;
   readonly captions_url: string;
@@ -157,7 +160,18 @@ function HitDetails({ hit, lang }: { hit: SearchHit, lang: string }) {
       if (data.status !== 'ok') {
         throw new Error('cut failed');
       }
-      setClipMetadata(data.meta_yaml);
+
+      const metaYaml = yaml.dump({
+        'file': data.clip_fn,
+        'kind': 'generated',
+        'src_title': hit.src_title,
+        'src_url': hit.src_url,
+        'src_path': hit.vid_fn,
+        'cut_start': clipStart,
+        'cut_end': clipEnd,
+      });
+
+      setClipMetadata(metaYaml);
     });
   };
 
