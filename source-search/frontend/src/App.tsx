@@ -55,7 +55,7 @@ function HitDetails({ hit, lang }: { hit: SearchHit, lang: string }) {
   const [clipStart, setClipStart] = useState<number>(hit.start);
   const [clipEnd, setClipEnd] = useState<number>(hit.end);
   const [clipMetadata, setClipMetadata] = useState<string>('');
-  const stopLatencyAverager = useRef(new WindowedAverager(3));
+  const stopLatencyAverager = useRef(new WindowedAverager(1));
   const [stopError, setStopError] = useState<string>('');
 
   const setRoundClipStart = (time: number) => {
@@ -174,15 +174,16 @@ function HitDetails({ hit, lang }: { hit: SearchHit, lang: string }) {
 
       const metaYaml = yaml.dump({
         'file': data.clip_fn,
-        'kind': 'generated',
+        'kind': 'collected',
         'src_title': hit.src_title,
         'src_url': hit.src_url,
         'src_path': hit.vid_fn,
         'cut_start': clipStart,
         'cut_end': clipEnd,
       });
+      const indentedMetaYaml = metaYaml.trimEnd().split('\n').map((line, idx) => ((idx === 0) ? '    - ' : '      ') + line).join('\n') + '\n';
 
-      setClipMetadata(metaYaml);
+      setClipMetadata(indentedMetaYaml);
     });
   };
 
@@ -208,10 +209,10 @@ function HitDetails({ hit, lang }: { hit: SearchHit, lang: string }) {
             {clipStart}
           </div>
           <div>
-            <button className="HitDetails-timing-button" onClick={() => { adjustStart(-1) }}>⇇</button>
+            <button className="HitDetails-timing-button" onClick={() => { adjustStart(-0.5) }}>⇇</button>
             <button className="HitDetails-timing-button" onClick={() => { adjustStart(-0.03) }}>←</button>
             <button className="HitDetails-timing-button" onClick={() => { adjustStart(0.03) }}>→</button>
-            <button className="HitDetails-timing-button" onClick={() => { adjustStart(1) }}>⇉</button>
+            <button className="HitDetails-timing-button" onClick={() => { adjustStart(0.5) }}>⇉</button>
           </div>
         </div>
         <div>
@@ -225,10 +226,10 @@ function HitDetails({ hit, lang }: { hit: SearchHit, lang: string }) {
             {clipEnd}
           </div>
           <div>
-          <button className="HitDetails-timing-button" onClick={() => { adjustEnd(-1) }}>⇇</button>
+          <button className="HitDetails-timing-button" onClick={() => { adjustEnd(-0.5) }}>⇇</button>
             <button className="HitDetails-timing-button" onClick={() => { adjustEnd(-0.03) }}>←</button>
             <button className="HitDetails-timing-button" onClick={() => { adjustEnd(0.03) }}>→</button>
-            <button className="HitDetails-timing-button" onClick={() => { adjustEnd(1) }}>⇉</button>
+            <button className="HitDetails-timing-button" onClick={() => { adjustEnd(0.5) }}>⇉</button>
           </div>
         </div>
       </div>
