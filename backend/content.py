@@ -1,13 +1,63 @@
 import re
 import yaml
 
+LANGS = [
+    'es',
+]
+
 RE_WORD_OR_BRACKETED = re.compile(r'(\[(?P<aword>[^\]]+)\]\((?P<aid>[^\)]+)\))|(\[(?P<bword>[^\]]+)\])|(?P<word>\w+)')
 
 class Fragment:
-    def __init__(self, text, atoms, plain_text):
-        self.text = text
+    def __init__(self, anno_text, spans, atoms, plain_text, clips):
+        self.anno_text = anno_text
+        self.spans = spans
         self.atoms = atoms
         self.plain_text = plain_text
+        self.clips = clips
+
+def parse_annotated_text(text):
+    result = []
+
+    idx = 0
+    for hit in RE_WORD_OR_BRACKETED.finditer(text):
+        word = None
+        atom_id = None
+        if hit.group('word'):
+            word = hit.group('word')
+            atom_id = word.lower()
+        elif hit.group('bword'):
+            word = hit.group('bword')
+            atom_id = word.lower()
+        elif hit.group('aword'):
+            word = hit.group('aword')
+            atom_id = hit.group('aid')
+
+        assert word is not None
+        assert atom_id is not None
+
+        if hit.start() > idx:
+            result.append({
+                't': text[idx:hit.start()],
+            })
+        result.append({
+            't': word,
+            'a': atom_id,
+        })
+
+        idx = hit.end()
+
+    if idx < len(text):
+        result.append({
+            't': text[idx:],
+        })
+
+    return result
+
+def plain_text_from_annotated_text(annotated_text):
+    return ''.join(item['t'] for item in annotated_text)
+
+def atom_set_from_annotated_text(annotated_text):
+    return set(item['a'] for item in annotated_text if 'a' in item)
 
 def load_content(lang):
     with open(f'resources/{lang}/atoms.yaml') as f:
@@ -18,28 +68,12 @@ def load_content(lang):
 
     frag_objs = []
     for frag in fragments:
-        # print(frag['text'])
-        frag_atoms = set()
-        for hit in RE_WORD_OR_BRACKETED.finditer(frag['text']):
-            word = None
-            atom_id = None
-            if hit.group('word'):
-                word = hit.group('word').lower()
-                atom_id = word
-            elif hit.group('bword'):
-                word = hit.group('bword').lower()
-                atom_id = word
-            elif hit.group('aword'):
-                word = hit.group('aword').lower()
-                atom_id = hit.group('aid')
+        anno_text = frag['text']
+        spans = parse_annotated_text(anno_text)
+        plain_text = plain_text_from_annotated_text(spans)
+        atom_set = atom_set_from_annotated_text(spans)
 
-            # print(f'  {word} ({atom_id})')
-
-            frag_atoms.add(atom_id)
-
-        plain_text = RE_WORD_OR_BRACKETED.sub(lambda m: m.group('word') or m.group('bword') or m.group('aword'), frag['text'])
-
-        frag_objs.append(Fragment(frag['text'], frag_atoms, plain_text))
+        frag_objs.append(Fragment(anno_text, spans, atom_set, plain_text, frag.get('clips', [])))
 
     return (atoms, frag_objs)
 
@@ -51,20 +85,20 @@ def validate_content(atoms, fragments):
             assert False
         atom_ids.add(atom['id'])
 
-    frag_texts = set()
+    frag_annotexts = set()
     for frag in fragments:
-        if frag.text in frag_texts:
-            print(f'ERROR: duplicate fragment text {frag.text}')
+        if frag.anno_text in frag_annotexts:
+            print(f'ERROR: duplicate fragment text {frag.anno_text}')
             assert False
-        frag_texts.add(frag.text)
+        frag_annotexts.add(frag.anno_text)
 
         for atom_id in frag.atoms:
             if atom_id not in atom_ids:
                 print(f'ERROR: atom {atom_id} not found in atom list')
-                print(frag.text)
+                print(frag.anno_text)
                 assert False
 
-def build_progression(atoms, fragments):
+def build_progression(atoms, fragments, debug):
     atom_map = {}
     for atom in atoms:
         atom_map[atom['id']] = atom
@@ -78,7 +112,7 @@ def build_progression(atoms, fragments):
     cumul_atom_ids = set()
     remaining_atom_ids = set(atom['id'] for atom in atoms)
 
-    remaining_fragments = set(fragments)
+    remaining_fragments = set(frag for frag in fragments if frag.clips)
 
     # items are (atoms_tuple, fragments_unlocked)
     progression = []
@@ -104,10 +138,11 @@ def build_progression(atoms, fragments):
 
         progression.append((next_atomset, next_frags_unlocked))
 
-        print('NEXT:', ', '.join(next_atomset), 'BIGSTEP' if len(next_atomset) > 1 else '')
-        for frag in next_frags_unlocked:
-            print('    ', frag.plain_text)
-        print()
+        if debug:
+            print('NEXT:', ', '.join(next_atomset), 'BIGSTEP' if len(next_atomset) > 1 else '')
+            for frag in next_frags_unlocked:
+                print('    ', frag.plain_text)
+            print()
 
         for next_atom_id in next_atomset:
             cumul_atom_ids.add(next_atom_id)
@@ -116,7 +151,21 @@ def build_progression(atoms, fragments):
 
     return progression
 
+def load_prepare_content(debug=False):
+    result = {}
+
+    for lang in LANGS:
+        (atoms, fragments) = load_content(lang)
+        validate_content(atoms, fragments)
+        progression = build_progression(atoms, fragments, debug)
+
+        result[lang] = {
+            'atoms': atoms,
+            'fragments': fragments,
+            'progression': progression,
+        }
+
+    return result
+
 if __name__ == '__main__':
-    (atoms, fragments) = load_content('es')
-    validate_content(atoms, fragments)
-    build_progression(atoms, fragments)
+    load_prepare_content(True)

@@ -1,4 +1,5 @@
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, text
+from sqlalchemy import create_engine, MetaData, Table, Column, Index, Integer, String, text
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app import app
 
@@ -25,3 +26,12 @@ user = Table('user', metadata,
     Column('login_count', Integer, nullable=False),
     Column('last_login', Integer, nullable=True),
 )
+
+user_srs = Table('user_srs', metadata,
+    Column('id', Integer, primary_key=True),
+    Column('user_id', Integer, nullable=False),
+    Column('lang', String(8), nullable=False),
+    Column('data', JSONB, nullable=False),
+)
+
+Index('user_srs_user_id_lang', user_srs.c.user_id, user_srs.c.lang, unique=True)

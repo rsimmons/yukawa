@@ -1,3 +1,4 @@
+import time
 import random
 
 from flask import request, jsonify, g
@@ -6,6 +7,7 @@ from flask_cors import CORS
 from app import app, db
 from app.auth import require_session
 from app.db import ping_db
+from srs import pick_question, init_srs_data
 
 if app.config['CORS_ENABLED']:
     print('enabling CORS')
@@ -61,4 +63,30 @@ def report_clip_understood():
 
     return jsonify({
         'status': 'ok',
+    })
+
+@app.route('/pick_question', methods=['POST'])
+@require_session
+def pick_question():
+    req = request.get_json()
+    print('pick_question:', req)
+
+    lang = req['lang']
+    t = time.time()
+
+    with db.engine.connect() as conn:
+        user_srs_row = conn.execute(
+            db.user_srs.select().where(db.user.c.id == g.user_id).where(db.user_srs.c.lang == lang)
+        ).one_or_none()
+
+    if user_srs_row:
+        srs_data = user_srs_row.data
+    else:
+        srs_data = init_srs_data()
+
+    question = pick_question(lang, srs_data, t)
+
+    return jsonify({
+        'status': 'ok',
+        'question': question,
     })
