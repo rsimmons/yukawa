@@ -1,5 +1,6 @@
 import re
 import yaml
+from pathlib import Path
 
 LANGS = [
     'es',
@@ -73,7 +74,13 @@ def load_content(lang):
         plain_text = plain_text_from_annotated_text(spans)
         atom_set = atom_set_from_annotated_text(spans)
 
-        frag_objs.append(Fragment(anno_text, spans, atom_set, plain_text, frag.get('clips', [])))
+        # modify fragment clips a bit, in-place
+        if 'clips' not in frag:
+            frag['clips'] = []
+        for clip in frag['clips']:
+            clip['id'] = Path(clip['file']).stem
+
+        frag_objs.append(Fragment(anno_text, spans, atom_set, plain_text, frag['clips']))
 
     return (atoms, frag_objs)
 

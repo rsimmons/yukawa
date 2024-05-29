@@ -42,6 +42,7 @@ def init_srs_data():
 
 def make_question(lang, frag, clip):
     return {
+        'clip_id': clip['id'],
         'clip_fn': clip['file'],
         'spans': frag.spans,
         'plain_text': frag.plain_text,
@@ -78,10 +79,10 @@ def pick_question(lang, srs_data, t):
                     last_time_text_asked = srs_data['clip_text'][frag.plain_text]['lt']
 
                 for clip in frag.clips:
-                    clip_fn = clip['file']
+                    clip_id = clip['id']
                     last_time_clip_asked = 0
-                    if clip_fn in srs_data['clip']:
-                        last_time_clip_asked = srs_data['clip'][clip_fn]['lt']
+                    if clip_id in srs_data['clip']:
+                        last_time_clip_asked = srs_data['clip'][clip_id]['lt']
 
                     review_clips.append({
                         'clip': clip,
@@ -135,9 +136,9 @@ def record_grade(lang, srs_data, question, grade, t):
         assert understood in [True, False]
         assert atom_id in atom_ids
 
-    srs_data['clip'][question['clip_fn']] = {
+    srs_data['clip'][question['clip_id']] = {
         'lt': t,
-        'ct': srs_data['clip'].get(question['clip_fn'], {}).get('ct', 0) + 1,
+        'ct': srs_data['clip'].get(question['clip_id'], {}).get('ct', 0) + 1,
         'lg': grade['clip_understood'],
     }
 
