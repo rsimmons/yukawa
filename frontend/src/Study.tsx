@@ -1,9 +1,93 @@
 import { useSelector } from "react-redux";
 import { InternalPage, RootState, UnderstoodGrade, actionStudyAllowGrading, actionStudyRevealAnswer, thunkSubmitGrade } from "./reducers";
 import { useAppDispatch } from "./store";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { touchAvail } from "./util";
 import './Study.css';
+import { APIQuestion } from "./api";
+
+function AtomPopup(props: {atomId: string, meaning: string, notes?: string}) {
+  return (
+    <div className="Study-atom-popup">
+      <div className="Study-atom-popup-meaning">{props.meaning}</div>
+      {props.notes && (
+        <div className="Study-atom-popup-notes">{props.notes}</div>
+      )}
+    </div>
+  );
+}
+
+function TranscriptionSpans(props: {spans: APIQuestion['spans'], atomInfo: APIQuestion['atomInfo']}) {
+  const [openSpan, setOpenSpan] = useState<{readonly idx: number, readonly fromClick: boolean} | null>(null);
+
+  const handleSpanMouseEnter = (i: number) => {
+    setOpenSpan(prev => {
+      if (prev && prev.fromClick) {
+        return prev;
+      } else {
+        return {idx: i, fromClick: false};
+      }
+    });
+  };
+
+  const handleSpanMouseLeave = (i: number) => {
+    setOpenSpan(prev => {
+      if (prev && (prev.idx === i) && !prev.fromClick) {
+        return null;
+      } else {
+        return prev;
+      }
+    });
+  };
+
+  const handleSpanClick = (i: number) => {
+    setOpenSpan(prev => {
+      if (prev && (prev.idx === i) && prev.fromClick) {
+        return null;
+      } else {
+        return {idx: i, fromClick: true};
+      }
+    });
+  };
+
+  const handleClick = (event: MouseEvent) => {
+    if (openSpan && (!event.target || !(event.target as HTMLElement).closest('.Study-transcription-span-atom-wrapper'))) {
+      setOpenSpan(null);
+    }
+  };
+
+  useEffect(() => {
+    window.addEventListener('click', handleClick);
+    return () => {
+      window.removeEventListener('click', handleClick);
+    };
+  }, [handleClick]);
+
+  return (
+    <span>
+      {props.spans.map((span, i) => {
+        if (span.a) {
+          return (
+            <span key={i} className="Study-transcription-span-atom-wrapper">
+              <span
+                className={openSpan && (openSpan.idx === i) ? 'Study-transcription-span-atom-open' : ''}
+                data-atom={span.a}
+                onMouseEnter={() => handleSpanMouseEnter(i)}
+                onMouseLeave={() => handleSpanMouseLeave(i)}
+                onClick={() => handleSpanClick(i)}
+              >{span.t}</span>
+              {openSpan && (openSpan.idx === i) && (
+                <AtomPopup atomId={span.a} meaning={props.atomInfo[span.a]!.meaning} notes={props.atomInfo[span.a]!.notes} />
+              )}
+            </span>
+          );
+        } else {
+          return <span key={i}>{span.t}</span>
+        }
+      })}
+    </span>
+  );
+}
 
 function StudyButton(props: {text: string, shortcut?: string, onClick: () => void}) {
   return (
@@ -97,9 +181,9 @@ export default function Study() {
       </video>
       {((page.stage === 'grading') || (page.stage === 'loading_next')) && (
         <div className="Study-trans">
-          <div className="Study-transcription">{question.transcription}</div>
+          <div className="Study-transcription"><TranscriptionSpans spans={question.spans} atomInfo={question.atomInfo} /></div>
           <div className="Study-trans-sep"></div>
-          <div className="Study-translation">{question.translation}</div>
+          <div className="Study-translation">{question.translations[0]}</div>
         </div>
       )}
       <div className="Study-pad"></div>

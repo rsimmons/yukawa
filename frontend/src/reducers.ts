@@ -1,14 +1,7 @@
 import { ThunkAction, ThunkDispatch, UnknownAction, createAction, createReducer } from '@reduxjs/toolkit'
-import { APIError, APILoginResponse, apiAuth, apiGetRandomClip, apiGetUserInfo, apiLogin, apiReportClipUnderstood } from './api';
+import { APIError, APILoginResponse, APIQuestion, apiAuth, apiGetQuestion, apiGetUserInfo, apiLogin, apiReportClipUnderstood } from './api';
 
 const SESSION_TOKEN_LOCAL_STORAGE_KEY = 'yukawa-session-token';
-
-export interface StudyQuestion {
-  readonly clipId: string;
-  readonly mediaUrl: string;
-  readonly transcription: string;
-  readonly translation: string;
-}
 
 export type StudyStage = 'input' | 'grading_allowed' | 'grading' | 'loading_next';
 
@@ -18,7 +11,7 @@ export type InternalPage = {
   readonly type: 'studyLoading';
 } | {
   readonly type: 'study';
-  readonly question: StudyQuestion;
+  readonly question: APIQuestion;
   readonly stage: StudyStage;
 };
 
@@ -112,17 +105,15 @@ export const thunkLogIn = (email: string, onUpdate: (resp: APILoginResponse) => 
 };
 
 export const loadClip = async (dispatch: ThunkDispatch<RootState, unknown, UnknownAction>, sessionToken: string) => {
-  const clipInfo = await apiGetRandomClip(sessionToken);
+  const questionInfo = await apiGetQuestion(sessionToken);
 
   // fetch entire clip as blob, make object URL
-  const blob = await fetch(clipInfo.mediaUrl).then((r) => r.blob());
+  const blob = await fetch(questionInfo.mediaUrl).then((r) => r.blob());
   const mediaUrl = URL.createObjectURL(blob);
 
   dispatch(actionStudyLoadQuestion({
-    clipId: clipInfo.clipId,
+    ...questionInfo,
     mediaUrl,
-    transcription: clipInfo.transcription,
-    translation: clipInfo.translation,
   }));
 }
 
@@ -161,12 +152,7 @@ export const actionBecomeLoggedIn = createAction<{
   readonly email: string;
 }>('becomeLoggedIn');
 export const actionEnterStudyLoading = createAction('enterStudyLoading');
-export const actionStudyLoadQuestion = createAction<{
-  readonly clipId: string;
-  readonly mediaUrl: string;
-  readonly transcription: string;
-  readonly translation: string;
-}>('loadQuestion');
+export const actionStudyLoadQuestion = createAction<APIQuestion>('loadQuestion');
 export const actionStudyAllowGrading = createAction('studyAllowGrading');
 export const actionStudyRevealAnswer = createAction('studyRevealAnswer');
 export const actionStudyLoadingNext = createAction('studyLoadingNext');
@@ -227,12 +213,7 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
           ...state.sess,
           page: {
             type: 'study',
-            question: {
-              clipId: action.payload.clipId,
-              mediaUrl: action.payload.mediaUrl,
-              transcription: action.payload.transcription,
-              translation: action.payload.translation,
-            },
+            question: action.payload,
             stage: 'input',
           },
         },

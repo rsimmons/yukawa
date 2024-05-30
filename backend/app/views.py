@@ -7,7 +7,8 @@ from flask_cors import CORS
 from app import app, db
 from app.auth import require_session
 from app.db import ping_db
-from srs import pick_question, init_srs_data
+import srs
+from app.lang import LANGS
 
 if app.config['CORS_ENABLED']:
     print('enabling CORS')
@@ -36,24 +37,24 @@ def user():
         'email': result.email,
     })
 
-@app.route('/random_clip', methods=['POST'])
-@require_session
-def random_clip():
-    clips = app.config['CLIPS']
-    clip = random.choice(clips)
+# @app.route('/random_clip', methods=['POST'])
+# @require_session
+# def random_clip():
+#     clips = app.config['CLIPS']
+#     clip = random.choice(clips)
 
-    sorted_trans = sorted(clip['translations'], key=lambda t: (t['src'] == 'subs'), reverse=True)
-    best_trans = sorted_trans[0]
-    translation = best_trans.get('text')
-    if translation is None:
-        translation = '\n'.join(s['text'] for s in best_trans['subs'])
+#     sorted_trans = sorted(clip['translations'], key=lambda t: (t['src'] == 'subs'), reverse=True)
+#     best_trans = sorted_trans[0]
+#     translation = best_trans.get('text')
+#     if translation is None:
+#         translation = '\n'.join(s['text'] for s in best_trans['subs'])
 
-    return jsonify({
-        'clip_id': clip['clip_id'],
-        'media_url': app.config['CLIP_URL_PREFIX'] + clip['source_id'] + '/' + clip['media'][0],
-        'transcription': '\n'.join(sub['text'] for sub in clip['subs']),
-        'translation': translation,
-    })
+#     return jsonify({
+#         'clip_id': clip['clip_id'],
+#         'media_url': app.config['CLIP_URL_PREFIX'] + clip['source_id'] + '/' + clip['media'][0],
+#         'transcription': '\n'.join(sub['text'] for sub in clip['subs']),
+#         'translation': translation,
+#     })
 
 @app.route('/report_clip_understood', methods=['POST'])
 @require_session
@@ -72,6 +73,7 @@ def pick_question():
     print('pick_question:', req)
 
     lang = req['lang']
+    assert lang in LANGS
     t = time.time()
 
     with db.engine.connect() as conn:
@@ -82,11 +84,15 @@ def pick_question():
     if user_srs_row:
         srs_data = user_srs_row.data
     else:
-        srs_data = init_srs_data()
+        srs_data = srs.init_srs_data()
 
-    question = pick_question(lang, srs_data, t)
+    question = srs.pick_question(lang, srs_data, t)
 
     return jsonify({
         'status': 'ok',
-        'question': question,
+        'media_url': app.config['CLIP_URL_PREFIX'] + lang + '/' + question['clip_fn'],
+        'clip_id': question['clip_id'],
+        'spans': question['spans'],
+        'translations': question['translations'],
+        'atom_info': question['atom_info'],
     })

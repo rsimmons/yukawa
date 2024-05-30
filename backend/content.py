@@ -9,12 +9,13 @@ LANGS = [
 RE_WORD_OR_BRACKETED = re.compile(r'(\[(?P<aword>[^\]]+)\]\((?P<aid>[^\)]+)\))|(\[(?P<bword>[^\]]+)\])|(?P<word>\w+)')
 
 class Fragment:
-    def __init__(self, anno_text, spans, atoms, plain_text, clips):
+    def __init__(self, *, anno_text, spans, atoms, plain_text, clips, translations):
         self.anno_text = anno_text
         self.spans = spans
         self.atoms = atoms
         self.plain_text = plain_text
         self.clips = clips
+        self.translations = translations
 
 def parse_annotated_text(text):
     result = []
@@ -62,38 +63,57 @@ def atom_set_from_annotated_text(annotated_text):
 
 def load_content(lang):
     with open(f'resources/{lang}/atoms.yaml') as f:
-        atoms = yaml.safe_load(f)
+        raw_atoms = yaml.safe_load(f)
+
+    atom_map = {}
+    for atom in raw_atoms:
+        atom_map[atom['id']] = atom
 
     with open(f'resources/{lang}/fragments.yaml') as f:
-        fragments = yaml.safe_load(f)
+        raw_fragments = yaml.safe_load(f)
 
     frag_objs = []
-    for frag in fragments:
+    for frag in raw_fragments:
         anno_text = frag['text']
         spans = parse_annotated_text(anno_text)
         plain_text = plain_text_from_annotated_text(spans)
         atom_set = atom_set_from_annotated_text(spans)
 
-        # modify fragment clips a bit, in-place
+        if len(atom_set) < 2:
+            continue
+
+        # modify fragment a bit, in-place
+        assert 'trans' in frag, f'no trans for frag {anno_text}'
+        if isinstance(frag['trans'], str):
+            frag['trans'] = [frag['trans']]
+        elif isinstance(frag['trans'], list):
+            pass
+        else:
+            assert False
+
         if 'clips' not in frag:
             frag['clips'] = []
         for clip in frag['clips']:
             clip['id'] = Path(clip['file']).stem
 
-        frag_objs.append(Fragment(anno_text, spans, atom_set, plain_text, frag['clips']))
+        frag_objs.append(Fragment(anno_text=anno_text, spans=spans, atoms=atom_set, plain_text=plain_text, clips=frag['clips'], translations=frag['trans']))
 
-    return (atoms, frag_objs)
+    return {
+        'atoms': raw_atoms,
+        'atom_map': atom_map,
+        'fragments': frag_objs,
+    }
 
-def validate_content(atoms, fragments):
+def validate_content(content):
     atom_ids = set()
-    for atom in atoms:
+    for atom in content['atoms']:
         if atom['id'] in atom_ids:
             print(f'ERROR: duplicate atom id {atom["id"]}')
             assert False
         atom_ids.add(atom['id'])
 
     frag_annotexts = set()
-    for frag in fragments:
+    for frag in content['fragments']:
         if frag.anno_text in frag_annotexts:
             print(f'ERROR: duplicate fragment text {frag.anno_text}')
             assert False
@@ -105,21 +125,17 @@ def validate_content(atoms, fragments):
                 print(frag.anno_text)
                 assert False
 
-def build_progression(atoms, fragments, debug):
-    atom_map = {}
-    for atom in atoms:
-        atom_map[atom['id']] = atom
-
+def build_progression(content, debug):
     # compute atom frequencies across fragments
     atom_id_freq = {}
-    for frag in fragments:
+    for frag in content['fragments']:
         for atom_id in frag.atoms:
             atom_id_freq[atom_id] = atom_id_freq.get(atom_id, 0) + 1
 
     cumul_atom_ids = set()
-    remaining_atom_ids = set(atom['id'] for atom in atoms)
+    remaining_atom_ids = set(atom['id'] for atom in content['atoms'])
 
-    remaining_fragments = set(frag for frag in fragments if frag.clips)
+    remaining_fragments = set(frag for frag in content['fragments'] if frag.clips)
 
     # items are (atoms_tuple, fragments_unlocked)
     progression = []
@@ -162,13 +178,12 @@ def load_prepare_content(debug=False):
     result = {}
 
     for lang in LANGS:
-        (atoms, fragments) = load_content(lang)
-        validate_content(atoms, fragments)
-        progression = build_progression(atoms, fragments, debug)
+        content = load_content(lang)
+        validate_content(content)
+        progression = build_progression(content, debug)
 
         result[lang] = {
-            'atoms': atoms,
-            'fragments': fragments,
+            'base': content,
             'progression': progression,
         }
 

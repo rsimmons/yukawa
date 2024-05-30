@@ -75,3 +75,27 @@
 .Study-button-shortcut {
   color: #888;
 }
+
+.Study-transcription-span-atom-open {
+  background-color: #ffff00;
+}
+
+.Study-transcription-span-atom-wrapper {
+  position: relative;
+}
+
+.Study-atom-popup {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(100% + 0.5rem);
+  background-color: white;
+  border: 1px solid black;
+  padding: 0.5em;
+  width: 20em;
+}
+
+.Study-atom-popup-notes {
+  color: #555;
+  font-size: 0.8em;
+}

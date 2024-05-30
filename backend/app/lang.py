@@ -1,0 +1,1 @@
+LANGS = set(['es'])

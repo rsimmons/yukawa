@@ -60,7 +60,7 @@ export const apiAuth = async (authToken: string): Promise<APIAuthResponse> => {
 };
 
 export interface APIUserInfo {
-  email: string,
+  readonly email: string,
 }
 
 export const apiGetUserInfo = async (sessionToken: string): Promise<APIUserInfo> => {
@@ -69,10 +69,10 @@ export const apiGetUserInfo = async (sessionToken: string): Promise<APIUserInfo>
 };
 
 export interface APIClipInfo {
-  clipId: string;
-  mediaUrl: string;
-  transcription: string;
-  translation: string;
+  readonly clipId: string;
+  readonly mediaUrl: string;
+  readonly transcription: string;
+  readonly translation: string;
 }
 
 export const apiGetRandomClip = async (sessionToken: string): Promise<APIClipInfo> => {
@@ -83,6 +83,36 @@ export const apiGetRandomClip = async (sessionToken: string): Promise<APIClipInf
     mediaUrl: resp.media_url,
     transcription: resp.transcription,
     translation: resp.translation,
+  };
+};
+
+export interface APISpan {
+  readonly t: string; // text
+  readonly a?: string; // atom id
+}
+
+export interface APIAtomInfo {
+  readonly meaning: string;
+  readonly notes?: string;
+}
+
+export interface APIQuestion {
+  readonly clipId: string;
+  readonly mediaUrl: string;
+  readonly spans: ReadonlyArray<APISpan>;
+  readonly translations: ReadonlyArray<string>;
+  readonly atomInfo: {[key: string]: APIAtomInfo};
+}
+
+export const apiGetQuestion = async (sessionToken: string): Promise<APIQuestion> => {
+  const resp = await post('/pick_question', {'lang': 'es'}, sessionToken);
+
+  return {
+    clipId: resp.clip_id,
+    mediaUrl: resp.media_url,
+    spans: resp.spans,
+    translations: resp.translations,
+    atomInfo: resp.atom_info,
   };
 };
 

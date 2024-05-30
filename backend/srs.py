@@ -41,11 +41,26 @@ def init_srs_data():
     }
 
 def make_question(lang, frag, clip):
+    # get atom meanings
+    atom_info = {}
+    for span in frag.spans:
+        if 'a' in span:
+            atom_id = span['a']
+            if atom_id not in atom_info:
+                content_atom_info = CONTENT[lang]['base']['atom_map'][atom_id]
+                atom_info[atom_id] = {
+                    'meaning': content_atom_info['meaning'],
+                }
+                if 'notes' in content_atom_info:
+                    atom_info[atom_id]['notes'] = content_atom_info['notes']
+
     return {
         'clip_id': clip['id'],
         'clip_fn': clip['file'],
         'spans': frag.spans,
         'plain_text': frag.plain_text,
+        'translations': frag.translations,
+        'atom_info': atom_info,
     }
 
 def pick_question(lang, srs_data, t):
@@ -127,7 +142,7 @@ def update_interval(interval, elapsed, grade):
 # grade is {'clip_understood': 'y' | 'n' | 'm', 'text_understood': 'y' | 'n' | 'm', 'atoms': (map from atom id to boolean)}
 def record_grade(lang, srs_data, question, grade, t):
     atom_ids = set()
-    for atom in CONTENT[lang]['atoms']:
+    for atom in CONTENT[lang]['base']['atoms']:
         atom_ids.add(atom['id'])
 
     assert grade['clip_understood'] in ['y', 'n', 'm']

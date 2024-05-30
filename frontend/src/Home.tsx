@@ -12,7 +12,7 @@ export default function Home() {
     return state.sess;
   });
 
-  const handleClickClips = () => {
+  const handleClickStudy = () => {
     dispatch(thunkEnterStudy());
   };
 
@@ -20,7 +20,7 @@ export default function Home() {
     <div>
       <div>Home {sess.email}</div>
       <p>|ENV TEST|{import.meta.env.VITE_FOOBAR}|{import.meta.env.MODE}|</p>
-      <p><button onClick={handleClickClips}>Random Clips</button></p>
+      <p><button onClick={handleClickStudy}>Study</button></p>
     </div>
   );
 }

@@ -16,7 +16,8 @@ class CommonConfig(object):
     AUTH_EMAIL_SENDER = 'Yukawa <russ@rsimmons.org>'
 
     CLIPS = all_clips
-    CLIP_URL_PREFIX = 'https://yukawa-clips.s3.us-west-2.amazonaws.com/ja/'
+    # CLIP_URL_PREFIX = 'https://yukawa-clips.s3.us-west-2.amazonaws.com/ja/'
+    CLIP_URL_PREFIX = 'http://localhost:9001/'
 
 env = os.environ.get('FLASK_ENV')
 print(f'FLASK_ENV is {env!r}')
