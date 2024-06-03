@@ -78,7 +78,7 @@ def pick_question():
 
     with db.engine.connect() as conn:
         user_srs_row = conn.execute(
-            db.user_srs.select().where(db.user.c.id == g.user_id).where(db.user_srs.c.lang == lang)
+            db.user_srs.select().where(db.user_srs.c.user_id == g.user_id).where(db.user_srs.c.lang == lang)
         ).one_or_none()
 
     if user_srs_row:
@@ -95,4 +95,42 @@ def pick_question():
         'spans': question['spans'],
         'translations': question['translations'],
         'atom_info': question['atom_info'],
+    })
+
+@app.route('/report_question_grades', methods=['POST'])
+@require_session
+def report_question_grades():
+    req = request.get_json()
+    print('report_question_grades:', req)
+
+    lang = req['lang']
+    assert lang in LANGS
+
+    t = time.time()
+
+    with db.engine.connect() as conn:
+        user_srs_row = conn.execute(
+            db.user_srs.select().where(db.user_srs.c.user_id == g.user_id).where(db.user_srs.c.lang == lang)
+        ).one_or_none()
+
+    print('user_srs_row:', user_srs_row)
+    if user_srs_row:
+        srs_data = user_srs_row.data
+    else:
+        srs_data = srs.init_srs_data()
+
+    srs.record_grades(lang, srs_data, req['clip_id'], req['grades'], t)
+
+    with db.engine.begin() as conn:
+        if user_srs_row:
+            conn.execute(
+                db.user_srs.update().where(db.user_srs.c.id == user_srs_row.id).values(data=srs_data)
+            )
+        else:
+            conn.execute(
+                db.user_srs.insert().values(user_id=g.user_id, lang=lang, data=srs_data)
+            )
+
+    return jsonify({
+        'status': 'ok',
     })

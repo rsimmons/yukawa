@@ -86,14 +86,19 @@ export const apiGetRandomClip = async (sessionToken: string): Promise<APIClipInf
   };
 };
 
+export type APIGrade = 'n' | 'm' | 'y';
+export const apiReportClipUnderstood = async (sessionToken: string, clipId: string, grade: APIGrade): Promise<void> => {
+  await post('/report_clip_understood', { clip_id: clipId, grade }, sessionToken);
+};
+
 export interface APISpan {
   readonly t: string; // text
   readonly a?: string; // atom id
 }
 
 export interface APIAtomInfo {
-  readonly meaning: string;
-  readonly notes?: string;
+  readonly meaning: string | null;
+  readonly notes: string | null;
 }
 
 export interface APIQuestion {
@@ -116,7 +121,16 @@ export const apiGetQuestion = async (sessionToken: string): Promise<APIQuestion>
   };
 };
 
-export type APIUnderstoodGrade = 'no' | 'mostly' | 'fully';
-export const apiReportClipUnderstood = async (sessionToken: string, clipId: string, grade: APIUnderstoodGrade): Promise<void> => {
-  await post('/report_clip_understood', { clip_id: clipId, grade }, sessionToken);
-};
+export interface APIQuestionGrades {
+  readonly heard: APIGrade;
+  readonly understood: APIGrade;
+  readonly atoms_failed: ReadonlyArray<string>;
+}
+
+export const apiReportQuestionGrades = async (sessionToken: string, lang: string, clipId: string, grades: APIQuestionGrades): Promise<void> => {
+  await post('/report_question_grades', {
+    lang,
+    clip_id: clipId,
+    grades,
+  }, sessionToken);
+}

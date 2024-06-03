@@ -1,9 +1,9 @@
 import { ThunkAction, ThunkDispatch, UnknownAction, createAction, createReducer } from '@reduxjs/toolkit'
-import { APIError, APILoginResponse, APIQuestion, apiAuth, apiGetQuestion, apiGetUserInfo, apiLogin, apiReportClipUnderstood } from './api';
+import { APIError, APIGrade, APILoginResponse, APIQuestion, apiAuth, apiGetQuestion, apiGetUserInfo, apiLogin, apiReportQuestionGrades } from './api';
 
 const SESSION_TOKEN_LOCAL_STORAGE_KEY = 'yukawa-session-token';
 
-export type StudyStage = 'input' | 'grading_allowed' | 'grading' | 'loading_next';
+export type StudyStage = 'listening' | 'grading_allowed' | 'grading_hearing' | 'grading_understanding' | 'grading_atoms' | 'loading_next';
 
 export type InternalPage = {
   readonly type: 'home';
@@ -13,6 +13,11 @@ export type InternalPage = {
   readonly type: 'study';
   readonly question: APIQuestion;
   readonly stage: StudyStage;
+  readonly grades: {
+    readonly heard: APIGrade | null;
+    readonly understood: APIGrade | null;
+    readonly atomsFailed: ReadonlyArray<string>;
+  };
 };
 
 export interface SessionState {
@@ -129,18 +134,68 @@ export const thunkEnterStudy = (): AppThunk => async (dispatch, getState) => {
   await loadClip(dispatch, sessionToken);
 };
 
-export type UnderstoodGrade = 'no' | 'mostly' | 'fully';
-export const thunkSubmitGrade = (clipId: string, grade: UnderstoodGrade): AppThunk => async (dispatch, getState) => {
-  dispatch(actionStudyLoadingNext());
 
+export const thunkGradeUnderstanding = (understood: APIGrade): AppThunk => async (dispatch, getState) => {
   const state = getState();
   if (state.type !== 'loggedIn') {
     throw new Error('invalid state');
   }
+  if (state.sess.page.type !== 'study') {
+    throw new Error('invalid page');
+  }
+  if (state.sess.page.stage !== 'grading_understanding') {
+    throw new Error('invalid stage');
+  }
+  if (state.sess.page.grades.heard === null) {
+    throw new Error('invalid state');
+  }
+
+  if (understood === 'y') {
+    dispatch(actionStudyLoadingNext());
+
+    const sessionToken = state.sess.sessionToken;
+
+    await apiReportQuestionGrades(sessionToken, 'es', state.sess.page.question.clipId, {
+      heard: state.sess.page.grades.heard,
+      understood,
+      atoms_failed: state.sess.page.grades.atomsFailed,
+    });
+
+    await loadClip(dispatch, sessionToken);
+  } else {
+    dispatch(actionStudyGradeUnderstanding({
+      understood,
+    }));
+  }
+};
+
+export const thunkSubmitGradeAtoms = (): AppThunk => async (dispatch, getState) => {
+  const state = getState();
+  if (state.type !== 'loggedIn') {
+    throw new Error('invalid state');
+  }
+  if (state.sess.page.type !== 'study') {
+    throw new Error('invalid page');
+  }
+  if (state.sess.page.stage !== 'grading_atoms') {
+    throw new Error('invalid stage');
+  }
+  if (state.sess.page.grades.heard === null) {
+    throw new Error('invalid state');
+  }
+  if (state.sess.page.grades.understood === null) {
+    throw new Error('invalid state');
+  }
+
+  dispatch(actionStudyLoadingNext());
 
   const sessionToken = state.sess.sessionToken;
 
-  await apiReportClipUnderstood(sessionToken, clipId, grade);
+  await apiReportQuestionGrades(sessionToken, 'es', state.sess.page.question.clipId, {
+    heard: state.sess.page.grades.heard,
+    understood: state.sess.page.grades.understood,
+    atoms_failed: state.sess.page.grades.atomsFailed,
+  });
 
   await loadClip(dispatch, sessionToken);
 };
@@ -152,9 +207,16 @@ export const actionBecomeLoggedIn = createAction<{
   readonly email: string;
 }>('becomeLoggedIn');
 export const actionEnterStudyLoading = createAction('enterStudyLoading');
-export const actionStudyLoadQuestion = createAction<APIQuestion>('loadQuestion');
+export const actionStudyLoadQuestion = createAction<APIQuestion>('studyLoadQuestion');
 export const actionStudyAllowGrading = createAction('studyAllowGrading');
-export const actionStudyRevealAnswer = createAction('studyRevealAnswer');
+export const actionStudyBeginGrading = createAction('studyBeginGrading');
+export const actionStudyGradeHearing = createAction<{
+  readonly heard: APIGrade;
+}>('studyGradeHearing');
+export const actionStudyGradeUnderstanding = createAction<{
+  readonly understood: APIGrade;
+}>('studyGradeUnderstanding');
+export const actionStudyToggleAtomGrade = createAction<string>('studyToggleAtomGrade');
 export const actionStudyLoadingNext = createAction('studyLoadingNext');
 
 const rootReducer = createReducer<RootState>(initialState, (builder) => {
@@ -214,7 +276,12 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
           page: {
             type: 'study',
             question: action.payload,
-            stage: 'input',
+            stage: 'listening',
+            grades: {
+              heard: null,
+              understood: null,
+              atomsFailed: [],
+            },
           },
         },
         status: state.status,
@@ -227,7 +294,7 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
       if (state.sess.page.type !== 'study') {
         return state;
       }
-      if (state.sess.page.stage !== 'input') {
+      if (state.sess.page.stage !== 'listening') {
         return state;
       }
       return {
@@ -242,7 +309,7 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
         status: state.status,
       };
     })
-    .addCase(actionStudyRevealAnswer, (state) => {
+    .addCase(actionStudyBeginGrading, (state) => {
       if (state.type !== 'loggedIn') {
         return state;
       }
@@ -258,7 +325,84 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
           ...state.sess,
           page: {
             ...state.sess.page,
-            stage: 'grading',
+            stage: 'grading_hearing',
+          },
+        },
+        status: state.status,
+      };
+    })
+    .addCase(actionStudyGradeHearing, (state, action) => {
+      if (state.type !== 'loggedIn') {
+        return state;
+      }
+      if (state.sess.page.type !== 'study') {
+        return state;
+      }
+      if (state.sess.page.stage !== 'grading_hearing') {
+        return state;
+      }
+      return {
+        type: 'loggedIn',
+        sess: {
+          ...state.sess,
+          page: {
+            ...state.sess.page,
+            stage: 'grading_understanding',
+            grades: {
+              ...state.sess.page.grades,
+              heard: action.payload.heard,
+            },
+          },
+        },
+        status: state.status,
+      };
+    })
+    .addCase(actionStudyGradeUnderstanding, (state, action) => {
+      if (state.type !== 'loggedIn') {
+        return state;
+      }
+      if (state.sess.page.type !== 'study') {
+        return state;
+      }
+      if (state.sess.page.stage !== 'grading_understanding') {
+        return state;
+      }
+      return {
+        type: 'loggedIn',
+        sess: {
+          ...state.sess,
+          page: {
+            ...state.sess.page,
+            stage: 'grading_atoms',
+            grades: {
+              ...state.sess.page.grades,
+              understood: action.payload.understood,
+            },
+          },
+        },
+        status: state.status,
+      };
+    })
+    .addCase(actionStudyToggleAtomGrade, (state, action) => {
+      if (state.type !== 'loggedIn') {
+        return state;
+      }
+      if (state.sess.page.type !== 'study') {
+        return state;
+      }
+      const atomId = action.payload;
+      const atomsFailed = state.sess.page.grades.atomsFailed;
+      const newAtomsFailed = atomsFailed.includes(atomId) ? atomsFailed.filter((atom) => atom !== atomId) : [...atomsFailed, atomId];
+      return {
+        type: 'loggedIn',
+        sess: {
+          ...state.sess,
+          page: {
+            ...state.sess.page,
+            grades: {
+              ...state.sess.page.grades,
+              atomsFailed: newAtomsFailed,
+            },
           },
         },
         status: state.status,
@@ -269,9 +413,6 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
         return state;
       }
       if (state.sess.page.type !== 'study') {
-        return state;
-      }
-      if (state.sess.page.stage !== 'grading') {
         return state;
       }
       return {

@@ -72,15 +72,13 @@ def load_content(lang):
     with open(f'resources/{lang}/fragments.yaml') as f:
         raw_fragments = yaml.safe_load(f)
 
+    clip_id_to_frag = {}
     frag_objs = []
     for frag in raw_fragments:
         anno_text = frag['text']
         spans = parse_annotated_text(anno_text)
         plain_text = plain_text_from_annotated_text(spans)
         atom_set = atom_set_from_annotated_text(spans)
-
-        if len(atom_set) < 2:
-            continue
 
         # modify fragment a bit, in-place
         assert 'trans' in frag, f'no trans for frag {anno_text}'
@@ -96,12 +94,17 @@ def load_content(lang):
         for clip in frag['clips']:
             clip['id'] = Path(clip['file']).stem
 
-        frag_objs.append(Fragment(anno_text=anno_text, spans=spans, atoms=atom_set, plain_text=plain_text, clips=frag['clips'], translations=frag['trans']))
+        frag_obj = Fragment(anno_text=anno_text, spans=spans, atoms=atom_set, plain_text=plain_text, clips=frag['clips'], translations=frag['trans'])
+        frag_objs.append(frag_obj)
+
+        for clip in frag['clips']:
+            clip_id_to_frag[clip['id']] = frag_obj
 
     return {
         'atoms': raw_atoms,
         'atom_map': atom_map,
         'fragments': frag_objs,
+        'clip_id_to_frag': clip_id_to_frag,
     }
 
 def validate_content(content):
@@ -111,6 +114,8 @@ def validate_content(content):
             print(f'ERROR: duplicate atom id {atom["id"]}')
             assert False
         atom_ids.add(atom['id'])
+
+        assert ('meaning' in atom) or ('notes' in atom), f'atom {atom["id"]} has no meaning or notes'
 
     frag_annotexts = set()
     for frag in content['fragments']:

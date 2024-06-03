@@ -3,23 +3,11 @@
   width: 100%;
 }
 
-.Study-trans {
-  display: flex;
-  justify-content: center;
-  margin-top: 1rem;
-}
-
 .Study-transcription, .Study-translation {
-  flex: 1 0 0;
   text-align: center;
   white-space: pre-wrap;
-  padding: 0 1rem;
-}
-
-.Study-trans-sep {
-  flex: 0 0 auto;
-  width: 1px;
-  background-color: #ccc;
+  margin: 0.5rem;
+  font-size: 2rem;
 }
 
 .Study-pad {
@@ -84,15 +72,22 @@
   position: relative;
 }
 
+.Study-transcription-span-atom-failed {
+  color: red;
+  text-decoration: line-through;
+}
+
 .Study-atom-popup {
+  font-size: 1.5rem;
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(100% + 0.5rem);
+  bottom: calc(100% + 1rem);
   background-color: white;
-  border: 1px solid black;
   padding: 0.5em;
-  width: 20em;
+  width: 20rem;
+  border: 1px solid #888;
+  border-radius: 0.5rem;
 }
 
 .Study-atom-popup-notes {

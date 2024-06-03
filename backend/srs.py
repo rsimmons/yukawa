@@ -7,11 +7,11 @@
 # clip - map from clip filename (without lang/path) to
 #   lt - last time asked (UNIX time)
 #   ct - count of times asked
-#   lg - last full-clip understood grade ('y' | 'n' | 'm')
+#   lg - last clip heard-correctly grade ('y' | 'n' | 'm')
 # clip_text - map from clip text (clean, un-annotated) to
 #   lt - last time asked (UNIX time)
 #   ct - count of times asked
-#   lg - last full text-understood grade (after seeing clip) ('y' | 'n' | 'm')
+#   lg - last clip understood-correctly grade ('y' | 'n' | 'm')
 # last_intro_time - last time new (or presumed-forgetten) atoms were introduced, or None
 
 import time
@@ -32,6 +32,9 @@ print('loading content...')
 CONTENT = load_prepare_content()
 print('loaded content')
 
+def srs_debug(*args):
+    print('SRS:', *args)
+
 def init_srs_data():
     return {
         'atom': {},
@@ -49,12 +52,11 @@ def make_question(lang, frag, clip):
             if atom_id not in atom_info:
                 content_atom_info = CONTENT[lang]['base']['atom_map'][atom_id]
                 atom_info[atom_id] = {
-                    'meaning': content_atom_info['meaning'],
+                    'meaning': content_atom_info.get('meaning'),
+                    'notes': content_atom_info.get('notes'),
                 }
-                if 'notes' in content_atom_info:
-                    atom_info[atom_id]['notes'] = content_atom_info['notes']
 
-    return {
+    question = {
         'clip_id': clip['id'],
         'clip_fn': clip['file'],
         'spans': frag.spans,
@@ -63,8 +65,22 @@ def make_question(lang, frag, clip):
         'atom_info': atom_info,
     }
 
+    srs_debug('question')
+    srs_debug('  clip_id:', question['clip_id'])
+    srs_debug('  plain_text:', question['plain_text'])
+    srs_debug('  atoms:', ' '.join(sorted(set(s['a'] for s in question['spans'] if 'a' in s))))
+    srs_debug()
+
+    return question
+
 def pick_question(lang, srs_data, t):
+    t = int(t)
+
+    srs_debug()
+    srs_debug('PICKING QUESTION')
+    # srs_debug('srs_data', srs_data)
     atom_due = {}
+    srs_debug('atoms')
     for atom_id, atom_data in srs_data['atom'].items():
         elapsed = t - atom_data['lt']
         rel_elapsed = elapsed / atom_data['iv']
@@ -75,6 +91,8 @@ def pick_question(lang, srs_data, t):
             atom_due[atom_id] = 'due'
         else:
             atom_due[atom_id] = 'not_due'
+
+        srs_debug(' ', atom_id, atom_due[atom_id], 'elapsed', elapsed, 'interval', atom_data['iv'])
 
     review_clips = [] # {'clip': ..., 'frag': ..., 'info': ...} for clips that would not introduce new/forgotten atoms
     intro_clips = [] # {'clip': ..., 'frag': ...} for clips that would introduce new/forgotten atoms
@@ -108,6 +126,7 @@ def pick_question(lang, srs_data, t):
                         },
                     })
         else:
+            srs_debug('frontier fragments have atom set:', ' '.join(sorted(atom_set)))
             for frag in frags_unlocked:
                 for clip in frag.clips:
                     intro_clips.append({
@@ -116,10 +135,12 @@ def pick_question(lang, srs_data, t):
                     })
             break
 
-    if (srs_data['last_intro_time'] is None) or (t - srs_data['last_intro_time'] > 60):
+    if intro_clips and (srs_data['last_intro_time'] is None) or (t - srs_data['last_intro_time'] > 60):
+        srs_debug('no recent intro, do intro')
         intro = random.choice(intro_clips)
         return make_question(lang, intro['frag'], intro['clip'])
     else:
+        srs_debug('recent intro, do review')
         review_clips.sort(key=lambda x: (-x['info']['due_count'], x['info']['last_time_text_asked'], x['info']['last_time_clip_asked']))
         review = review_clips[0]
         return make_question(lang, review['frag'], review['clip'])
@@ -135,35 +156,47 @@ def update_interval(interval, elapsed, grade):
             # - if elapsed==0 then the interval will be unchanged
             # furthermore, we limit how much the interval can grow, in case it was asked very late and they got it right by a fluke
             new_interval = interval + (elapsed * (INTERVAL_SUCCESS_MULTIPLIER - 1))
-            return min(new_interval, interval*MAX_INTERVAL_MULTIPLIER)
+            return int(min(new_interval, interval*MAX_INTERVAL_MULTIPLIER))
         else:
-            return max(MIN_INTERVAL, interval / INTERVAL_FAILURE_DIVISOR)
+            return int(max(MIN_INTERVAL, interval / INTERVAL_FAILURE_DIVISOR))
 
-# grade is {'clip_understood': 'y' | 'n' | 'm', 'text_understood': 'y' | 'n' | 'm', 'atoms': (map from atom id to boolean)}
-def record_grade(lang, srs_data, question, grade, t):
-    atom_ids = set()
-    for atom in CONTENT[lang]['base']['atoms']:
-        atom_ids.add(atom['id'])
+# grade is {'heard': 'y' | 'n' | 'm', 'understood': 'y' | 'n' | 'm', 'atoms_failed': (array of atom_ids)}
+def record_grades(lang, srs_data, clip_id, grades, t):
+    t = int(t)
 
-    assert grade['clip_understood'] in ['y', 'n', 'm']
-    assert grade['text_understood'] in ['y', 'n', 'm']
-    for atom_id, understood in grade['atoms'].items():
-        assert understood in [True, False]
-        assert atom_id in atom_ids
+    srs_debug()
+    srs_debug('RECORDING GRADES')
+    frag = CONTENT[lang]['base']['clip_id_to_frag'][clip_id]
+    assert frag is not None
 
-    srs_data['clip'][question['clip_id']] = {
+    heard = grades['heard']
+    assert heard in ['y', 'n', 'm']
+
+    understood = grades['understood']
+    assert understood in ['y', 'n', 'm']
+
+    atom_grades = {atom_id: True for atom_id in frag.atoms}
+    for atom_id in grades['atoms_failed']:
+        assert atom_id in frag.atoms
+        atom_grades[atom_id] = False
+    srs_debug('atom grades')
+    for atom_id, success in atom_grades.items():
+        srs_debug(' ', atom_id, success)
+
+    srs_data['clip'][clip_id] = {
         'lt': t,
-        'ct': srs_data['clip'].get(question['clip_id'], {}).get('ct', 0) + 1,
-        'lg': grade['clip_understood'],
+        'ct': srs_data['clip'].get(clip_id, {}).get('ct', 0) + 1,
+        'lg': grades['heard'],
     }
 
-    srs_data['clip_text'][question['plain_text']] = {
+    plain_text = frag.plain_text
+    srs_data['clip_text'][plain_text] = {
         'lt': t,
-        'ct': srs_data['clip_text'].get(question['plain_text'], {}).get('ct', 0) + 1,
-        'lg': grade['text_understood'],
+        'ct': srs_data['clip_text'].get(plain_text, {}).get('ct', 0) + 1,
+        'lg': grades['understood'],
     }
 
-    for atom_id, understood in grade['atoms'].items():
+    for atom_id, understood in atom_grades.items():
         prev_interval = None
         if atom_id in srs_data['atom']:
             prev_interval = srs_data['atom'][atom_id]['iv']
@@ -172,36 +205,27 @@ def record_grade(lang, srs_data, question, grade, t):
             elapsed = t - srs_data['atom'][atom_id]['lt']
 
         new_interval = update_interval(prev_interval, elapsed, understood)
-        print('atom before', atom_id, srs_data['atom'].get(atom_id, None))
         srs_data['atom'][atom_id] = {
             'lt': t,
             'iv': new_interval,
             'lg': understood,
         }
-        print('atom after', atom_id, srs_data['atom'][atom_id])
+        srs_debug(f'atom {atom_id} grade {understood} elapsed {elapsed} interval {prev_interval} -> {new_interval} ')
+
+    srs_debug()
 
 if __name__ == '__main__':
     srs_data = init_srs_data()
 
     t = time.time()
     for i in range(5):
-        print('PICKING QUESTION')
         q = pick_question('es', srs_data, t)
-        print(q)
-        print()
-
-        atom_grades = {}
-        for s in q['spans']:
-            if 'a' in s:
-                atom_grades[s['a']] = True
 
         t += 10
-        print('RECORDING GRADE')
-        record_grade('es', srs_data, q, {
-            'clip_understood': 'y',
-            'text_understood': 'y',
-            'atoms': atom_grades,
+        record_grades('es', srs_data, q['clip_id'], {
+            'heard': 'y',
+            'understood': 'y',
+            'atoms_failed': [],
         }, t)
-        print()
 
         t += 120

@@ -1,15 +1,17 @@
 import { useSelector } from "react-redux";
-import { InternalPage, RootState, UnderstoodGrade, actionStudyAllowGrading, actionStudyRevealAnswer, thunkSubmitGrade } from "./reducers";
-import { useAppDispatch } from "./store";
+import { InternalPage, RootState, actionStudyAllowGrading, actionStudyBeginGrading, actionStudyGradeHearing, actionStudyToggleAtomGrade, thunkGradeUnderstanding, thunkSubmitGradeAtoms } from "./reducers";
+import { AppDispatch, useAppDispatch } from "./store";
 import { useEffect, useRef, useState } from "react";
 import { touchAvail } from "./util";
 import './Study.css';
-import { APIQuestion } from "./api";
+import { APIGrade, APIQuestion } from "./api";
 
-function AtomPopup(props: {atomId: string, meaning: string, notes?: string}) {
+function AtomPopup(props: {atomId: string, meaning: string | null, notes: string | null}) {
   return (
     <div className="Study-atom-popup">
-      <div className="Study-atom-popup-meaning">{props.meaning}</div>
+      {props.meaning && (
+        <div className="Study-atom-popup-title">{props.meaning}</div>
+      )}
       {props.notes && (
         <div className="Study-atom-popup-notes">{props.notes}</div>
       )}
@@ -17,7 +19,7 @@ function AtomPopup(props: {atomId: string, meaning: string, notes?: string}) {
   );
 }
 
-function TranscriptionSpans(props: {spans: APIQuestion['spans'], atomInfo: APIQuestion['atomInfo']}) {
+function TranscriptionSpans(props: {spans: APIQuestion['spans'], atomInfo: APIQuestion['atomInfo'], atomsFailed: ReadonlyArray<string>, dispatch: AppDispatch}) {
   const [openSpan, setOpenSpan] = useState<{readonly idx: number, readonly fromClick: boolean} | null>(null);
 
   const handleSpanMouseEnter = (i: number) => {
@@ -48,6 +50,10 @@ function TranscriptionSpans(props: {spans: APIQuestion['spans'], atomInfo: APIQu
         return {idx: i, fromClick: true};
       }
     });
+    const span = props.spans[i];
+    if (span.a) {
+      props.dispatch(actionStudyToggleAtomGrade(span.a));
+    }
   };
 
   const handleClick = (event: MouseEvent) => {
@@ -67,10 +73,17 @@ function TranscriptionSpans(props: {spans: APIQuestion['spans'], atomInfo: APIQu
     <span>
       {props.spans.map((span, i) => {
         if (span.a) {
+          const classList: string[] = [];
+          if (openSpan && (openSpan.idx === i)) {
+            classList.push('Study-transcription-span-atom-open');
+          }
+          if (props.atomsFailed.includes(span.a)) {
+            classList.push('Study-transcription-span-atom-failed');
+          }
           return (
             <span key={i} className="Study-transcription-span-atom-wrapper">
               <span
-                className={openSpan && (openSpan.idx === i) ? 'Study-transcription-span-atom-open' : ''}
+                className={classList.join(' ')}
                 data-atom={span.a}
                 onMouseEnter={() => handleSpanMouseEnter(i)}
                 onMouseLeave={() => handleSpanMouseLeave(i)}
@@ -111,18 +124,35 @@ export default function Study() {
     throw new Error('invalid page');
   }
 
-  const handleRevealAnswer = () => {
-    dispatch(actionStudyRevealAnswer());
+  const handleBeginGrading = () => {
+    dispatch(actionStudyBeginGrading());
   };
 
-  const handleGrade = (grade: UnderstoodGrade) => {
-    dispatch(thunkSubmitGrade(page.question.clipId, grade));
+  const handleGradeHearing = (grade: APIGrade) => {
+    dispatch(actionStudyGradeHearing({heard: grade}));
+  };
+
+  const handleGradeUnderstanding = (grade: APIGrade) => {
+    dispatch(thunkGradeUnderstanding(grade));
+  };
+
+  const handleGradeWords = () => {
+    // TODO: get failed atoms
+    dispatch(thunkSubmitGradeAtoms());
   };
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const grade_hearing_or_understanding = (grade: APIGrade) => {
+        if (page.stage === 'grading_hearing') {
+          handleGradeHearing(grade);
+        } else if (page.stage === 'grading_understanding') {
+          handleGradeUnderstanding(grade);
+        }
+      };
+
       if (event.key === 'r') {
         if (videoRef.current) {
           videoRef.current.currentTime = 0;
@@ -130,20 +160,16 @@ export default function Study() {
         }
       } else if (event.key === ' ') {
         if (page.stage === 'grading_allowed') {
-          handleRevealAnswer();
+          handleBeginGrading();
+        } else if (page.stage === 'grading_atoms') {
+          handleGradeWords();
         }
       } else if (event.key === '1') {
-        if (page.stage === 'grading') {
-          handleGrade('no');
-        }
+        grade_hearing_or_understanding('n');
       } else if (event.key === '2') {
-        if (page.stage === 'grading') {
-          handleGrade('mostly');
-        }
+        grade_hearing_or_understanding('m');
       } else if (event.key === '3') {
-        if (page.stage === 'grading') {
-          handleGrade('fully');
-        }
+        grade_hearing_or_understanding('y');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -154,8 +180,8 @@ export default function Study() {
 
   const handleVideoTimeUpdate = () => {
     if (videoRef.current) {
-      if (videoRef.current.currentTime > (videoRef.current.duration-0.5)) {
-        if (page.stage === 'input') {
+      if (videoRef.current.currentTime > (videoRef.current.duration-1)) {
+        if (page.stage === 'listening') {
           dispatch(actionStudyAllowGrading());
         }
       }
@@ -179,17 +205,16 @@ export default function Study() {
         <source src={question.mediaUrl} type="video/mp4" />
         Your browser does not support the video tag.
       </video>
-      {((page.stage === 'grading') || (page.stage === 'loading_next')) && (
-        <div className="Study-trans">
-          <div className="Study-transcription"><TranscriptionSpans spans={question.spans} atomInfo={question.atomInfo} /></div>
-          <div className="Study-trans-sep"></div>
-          <div className="Study-translation">{question.translations[0]}</div>
-        </div>
+      {((page.stage === 'grading_hearing') || (page.stage === 'grading_understanding') || (page.stage === 'grading_atoms')) && (
+        <div className="Study-transcription"><TranscriptionSpans spans={question.spans} atomInfo={question.atomInfo} atomsFailed={page.grades.atomsFailed} dispatch={dispatch} /></div>
+      )}
+      {((page.stage === 'grading_understanding') || (page.stage === 'grading_atoms')) && (
+        <div className="Study-translation">{question.translations[0]}</div>
       )}
       <div className="Study-pad"></div>
       {(() => {
         switch (page.stage) {
-          case 'input':
+          case 'listening':
             return (
               <div className="Study-controls">
                 <div className="Study-controls-instructions">Listen carefully</div>
@@ -199,21 +224,43 @@ export default function Study() {
           case 'grading_allowed':
             return (
               <div className="Study-controls">
-                <div className="Study-controls-instructions">Could you understand it?<br/>{touchAvail ? 'R' : '[R]'}eplay if needed</div>
+                <div className="Study-controls-instructions">Can you understand it?<br/>{touchAvail ? 'R' : '[R]'}eplay if needed</div>
                 <div className="Study-controls-buttons">
-                  <StudyButton text="Reveal Subtitles" shortcut="[space]" onClick={handleRevealAnswer} />
+                  <StudyButton text="Reveal Captions" shortcut="[space]" onClick={handleBeginGrading} />
                 </div>
               </div>
             );
 
-          case 'grading':
+          case 'grading_hearing':
             return (
               <div className="Study-controls">
-                <div className="Study-controls-instructions">Did you understand it correctly?</div>
+                <div className="Study-controls-instructions">Did you correctly hear the words before seeing captions?</div>
                 <div className="Study-controls-buttons">
-                  <StudyButton text="No" shortcut="[1]" onClick={() => {handleGrade('no')}} />
-                  <StudyButton text="Mostly" shortcut="[2]" onClick={() => {handleGrade('mostly')}} />
-                  <StudyButton text="Fully" shortcut="[3]" onClick={() => {handleGrade('fully')}} />
+                  <StudyButton text="No" shortcut="[1]" onClick={() => {handleGradeHearing('n')}} />
+                  <StudyButton text="Mostly" shortcut="[2]" onClick={() => {handleGradeHearing('m')}} />
+                  <StudyButton text="Fully" shortcut="[3]" onClick={() => {handleGradeHearing('y')}} />
+                </div>
+              </div>
+            );
+
+          case 'grading_understanding':
+            return (
+              <div className="Study-controls">
+                <div className="Study-controls-instructions">Did you correctly understand the meaning before seeing the translation?</div>
+                <div className="Study-controls-buttons">
+                  <StudyButton text="No" shortcut="[1]" onClick={() => {handleGradeUnderstanding('n')}} />
+                  <StudyButton text="Mostly" shortcut="[2]" onClick={() => {handleGradeUnderstanding('m')}} />
+                  <StudyButton text="Fully" shortcut="[3]" onClick={() => {handleGradeUnderstanding('y')}} />
+                </div>
+              </div>
+            );
+
+          case 'grading_atoms':
+            return (
+              <div className="Study-controls">
+                <div className="Study-controls-instructions">Mark any words you didn't know/remember</div>
+                <div className="Study-controls-buttons">
+                <StudyButton text="Continue" shortcut="[space]" onClick={handleGradeWords} />
                 </div>
               </div>
             );
