@@ -106,6 +106,7 @@ export interface APIQuestion {
   readonly mediaUrl: string;
   readonly spans: ReadonlyArray<APISpan>;
   readonly translations: ReadonlyArray<string>;
+  readonly notes: string | null;
   readonly atomInfo: {[key: string]: APIAtomInfo};
 }
 
@@ -117,6 +118,7 @@ export const apiGetQuestion = async (sessionToken: string): Promise<APIQuestion>
     mediaUrl: resp.media_url,
     spans: resp.spans,
     translations: resp.translations,
+    notes: resp.notes,
     atomInfo: resp.atom_info,
   };
 };

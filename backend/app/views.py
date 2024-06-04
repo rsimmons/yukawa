@@ -94,6 +94,7 @@ def pick_question():
         'clip_id': question['clip_id'],
         'spans': question['spans'],
         'translations': question['translations'],
+        'notes': question['notes'],
         'atom_info': question['atom_info'],
     })
 

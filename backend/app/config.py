@@ -16,12 +16,13 @@ class CommonConfig(object):
     AUTH_EMAIL_SENDER = 'Yukawa <russ@rsimmons.org>'
 
     CLIPS = all_clips
-    # CLIP_URL_PREFIX = 'https://yukawa-clips.s3.us-west-2.amazonaws.com/ja/'
-    CLIP_URL_PREFIX = 'http://localhost:9001/'
 
 env = os.environ.get('FLASK_ENV')
 print(f'FLASK_ENV is {env!r}')
 if env == 'development':
+    # DEV_HOST = 'localhost'
+    DEV_HOST = '192.168.7.113'
+
     class Config(CommonConfig):
         DB_URL = f'postgresql+psycopg://postgres@localhost/yukawa'
         DB_ECHO = True
@@ -30,11 +31,13 @@ if env == 'development':
         MAIL_LOGGED = True
 
         AUTH_KEY = 'DevAuthKey'
-        AUTH_URL_PREFIX = 'http://localhost:5173/?authtoken='
+        AUTH_URL_PREFIX = f'http://{DEV_HOST}:4173/?authtoken='
 
         SESSION_KEY = 'DevSessionKey'
 
         CORS_ENABLED = True
+
+        CLIP_URL_PREFIX = f'http://{DEV_HOST}:9001/'
 elif env == 'production':
     DB_USER = os.environ['DB_USER']
     DB_PASSWORD = os.environ['DB_PASSWORD']
@@ -53,5 +56,7 @@ elif env == 'production':
         SESSION_KEY = os.environ['SESSION_KEY']
 
         CORS_ENABLED = False
+
+        # CLIP_URL_PREFIX = 'https://yukawa-clips.s3.us-west-2.amazonaws.com/ja/'
 else:
     raise ValueError(f'unknown FLASK_ENV {env!r}')

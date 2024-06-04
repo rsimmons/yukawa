@@ -3,11 +3,16 @@
   width: 100%;
 }
 
-.Study-transcription, .Study-translation {
+.Study-transcription, .Study-translations {
   text-align: center;
   white-space: pre-wrap;
-  margin: 0.5rem;
+  margin: 0.75rem;
   font-size: 2rem;
+}
+
+.Study-translation-notes {
+  font-size: 1.5rem;
+  color: #555;
 }
 
 .Study-pad {

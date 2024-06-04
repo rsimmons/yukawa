@@ -9,13 +9,14 @@ LANGS = [
 RE_WORD_OR_BRACKETED = re.compile(r'(\[(?P<aword>[^\]]+)\]\((?P<aid>[^\)]+)\))|(\[(?P<bword>[^\]]+)\])|(?P<word>\w+)')
 
 class Fragment:
-    def __init__(self, *, anno_text, spans, atoms, plain_text, clips, translations):
+    def __init__(self, *, anno_text, spans, atoms, plain_text, clips, translations, notes):
         self.anno_text = anno_text
         self.spans = spans
         self.atoms = atoms
         self.plain_text = plain_text
         self.clips = clips
         self.translations = translations
+        self.notes = notes
 
 def parse_annotated_text(text):
     result = []
@@ -65,12 +66,28 @@ def load_content(lang):
     with open(f'resources/{lang}/atoms.yaml') as f:
         raw_atoms = yaml.safe_load(f)
 
+    for atom in raw_atoms:
+        for k in atom:
+            assert k in ['id', 'meaning', 'notes'], f'unknown key {k} in atom {atom["id"]}'
+
     atom_map = {}
     for atom in raw_atoms:
         atom_map[atom['id']] = atom
 
     with open(f'resources/{lang}/fragments.yaml') as f:
         raw_fragments = yaml.safe_load(f)
+
+    for frag in raw_fragments:
+        for k in frag:
+            assert k in ['text', 'trans', 'notes', 'clips'], f'unknown key {k} in fragment {frag["text"]}'
+            assert isinstance(frag['trans'], (str, list)), f'invalid trans field in fragment {frag["text"]}'
+            if 'clips' in frag:
+                assert isinstance(frag['clips'], list), f'invalid clips field in fragment {frag["text"]}'
+                for clip in frag['clips']:
+                    assert isinstance(clip, dict), f'invalid clip in fragment {frag["text"]}'
+                    assert 'file' in clip, f'clip has no file in fragment {frag["text"]}'
+                    for k in clip:
+                        assert k in ['file', 'kind', 'src_title', 'src_url', 'src_path', 'cut_start', 'cut_end'], f'unknown key {k} in clip in fragment {frag["text"]}'
 
     clip_id_to_frag = {}
     frag_objs = []
@@ -94,7 +111,7 @@ def load_content(lang):
         for clip in frag['clips']:
             clip['id'] = Path(clip['file']).stem
 
-        frag_obj = Fragment(anno_text=anno_text, spans=spans, atoms=atom_set, plain_text=plain_text, clips=frag['clips'], translations=frag['trans'])
+        frag_obj = Fragment(anno_text=anno_text, spans=spans, atoms=atom_set, plain_text=plain_text, clips=frag['clips'], translations=frag['trans'], notes=frag.get('notes'))
         frag_objs.append(frag_obj)
 
         for clip in frag['clips']:

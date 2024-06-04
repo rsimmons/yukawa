@@ -27,6 +27,7 @@ MIN_INTERVAL = 10
 MIN_OVERDUE_INTERVAL = 600
 REL_OVERDUE_THRESHOLD = 3
 MAX_INTERVAL_MULTIPLIER = 5 # the maximum interval multiplier for a successful review
+MIN_INTRO_DELAY = 60
 
 print('loading content...')
 CONTENT = load_prepare_content()
@@ -62,6 +63,7 @@ def make_question(lang, frag, clip):
         'spans': frag.spans,
         'plain_text': frag.plain_text,
         'translations': frag.translations,
+        'notes': frag.notes,
         'atom_info': atom_info,
     }
 
@@ -123,6 +125,7 @@ def pick_question(lang, srs_data, t):
                         'info': {
                             'due_count': due_count,
                             'last_time_clip_asked': last_time_clip_asked,
+                            'last_time_text_asked': last_time_text_asked,
                         },
                     })
         else:
@@ -135,15 +138,20 @@ def pick_question(lang, srs_data, t):
                     })
             break
 
-    if intro_clips and (srs_data['last_intro_time'] is None) or (t - srs_data['last_intro_time'] > 60):
-        srs_debug('no recent intro, do intro')
+    review_clips.sort(key=lambda x: (-x['info']['due_count'], x['info']['last_time_text_asked'], x['info']['last_time_clip_asked']))
+    best_review_clip = review_clips[0]
+    last_intro_time = srs_data['last_intro_time']
+
+    if best_review_clip['info']['due_count'] > 0:
+        srs_debug('there are clips with due atoms, do review')
+        return make_question(lang, best_review_clip['frag'], best_review_clip['clip'])
+    elif intro_clips and ((last_intro_time is None) or ((t - last_intro_time) > MIN_INTRO_DELAY)):
+        srs_debug('there are no clips with due atoms, and no recent intro, so do intro')
         intro = random.choice(intro_clips)
         return make_question(lang, intro['frag'], intro['clip'])
     else:
-        srs_debug('recent intro, do review')
-        review_clips.sort(key=lambda x: (-x['info']['due_count'], x['info']['last_time_text_asked'], x['info']['last_time_clip_asked']))
-        review = review_clips[0]
-        return make_question(lang, review['frag'], review['clip'])
+        srs_debug('there are no clips with due atoms, and we cannot do an intro, so do review')
+        return make_question(lang, best_review_clip['frag'], best_review_clip['clip'])
 
 # interval and elapsed may be None is this is the first time the atom is being asked
 def update_interval(interval, elapsed, grade):

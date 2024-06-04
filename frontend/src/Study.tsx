@@ -209,7 +209,12 @@ export default function Study() {
         <div className="Study-transcription"><TranscriptionSpans spans={question.spans} atomInfo={question.atomInfo} atomsFailed={page.grades.atomsFailed} dispatch={dispatch} /></div>
       )}
       {((page.stage === 'grading_understanding') || (page.stage === 'grading_atoms')) && (
-        <div className="Study-translation">{question.translations[0]}</div>
+        <div className="Study-translations">
+          {question.translations.map((translation, i) => (
+            <div key={i} className="Study-translation">{translation}</div>
+          ))}
+          {question.notes && <div className="Study-translation-notes">{question.notes}</div>}
+        </div>
       )}
       <div className="Study-pad"></div>
       {(() => {
