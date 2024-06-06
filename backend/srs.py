@@ -139,10 +139,10 @@ def pick_question(lang, srs_data, t):
             break
 
     review_clips.sort(key=lambda x: (-x['info']['due_count'], x['info']['last_time_text_asked'], x['info']['last_time_clip_asked']))
-    best_review_clip = review_clips[0]
+    best_review_clip = review_clips[0] if review_clips else None
     last_intro_time = srs_data['last_intro_time']
 
-    if best_review_clip['info']['due_count'] > 0:
+    if best_review_clip and (best_review_clip['info']['due_count'] > 0):
         srs_debug('there are clips with due atoms, do review')
         return make_question(lang, best_review_clip['frag'], best_review_clip['clip'])
     elif intro_clips and ((last_intro_time is None) or ((t - last_intro_time) > MIN_INTRO_DELAY)):
@@ -151,6 +151,7 @@ def pick_question(lang, srs_data, t):
         return make_question(lang, intro['frag'], intro['clip'])
     else:
         srs_debug('there are no clips with due atoms, and we cannot do an intro, so do review')
+        assert best_review_clip is not None
         return make_question(lang, best_review_clip['frag'], best_review_clip['clip'])
 
 # interval and elapsed may be None is this is the first time the atom is being asked
