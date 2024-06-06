@@ -6,8 +6,8 @@ import json
 
 # read clips from all_clips.json
 # reading this here is a bit of a hack?
-with open('resources/all_clips.json') as f:
-    all_clips = json.load(f)
+# with open('resources/all_clips.json') as f:
+#     all_clips = json.load(f)
 
 class CommonConfig(object):
     AUTH_TOKEN_EXPIRATION = 10*60
@@ -15,7 +15,7 @@ class CommonConfig(object):
     AUTH_EMAIL_SUBJECT = 'Log in to Yukawa'
     AUTH_EMAIL_SENDER = 'Yukawa <russ@rsimmons.org>'
 
-    CLIPS = all_clips
+    # CLIPS = all_clips
 
 env = os.environ.get('FLASK_ENV')
 print(f'FLASK_ENV is {env!r}')
@@ -35,7 +35,7 @@ if env == 'development':
 
         SESSION_KEY = 'DevSessionKey'
 
-        CORS_ENABLED = True
+        CORS_ORIGINS = ['*']
 
         CLIP_URL_PREFIX = f'http://{DEV_HOST}:9001/'
 elif env == 'production':
@@ -55,7 +55,7 @@ elif env == 'production':
 
         SESSION_KEY = os.environ['SESSION_KEY']
 
-        CORS_ENABLED = False
+        CORS_ORIGINS = ['https://yukawa.app', 'https://yukawa-frontend.netlify.app']
 
         CLIP_URL_PREFIX = 'https://yukawa-clips.s3.us-west-2.amazonaws.com/'
 else:

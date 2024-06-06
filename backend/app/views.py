@@ -10,9 +10,8 @@ from app.db import ping_db
 import srs
 from app.lang import LANGS
 
-if app.config['CORS_ENABLED']:
-    print('enabling CORS')
-    CORS(app)
+print('enabling CORS')
+CORS(app, origins=app.config['CORS_ORIGINS'])
 
 @app.route('/')
 def hello_world():
