@@ -10,7 +10,7 @@ if (import.meta.env.MODE === 'development') {
   const loc = window.location;
   API_ENDPOINT = `${loc.protocol}//${loc.hostname}:4649`
 } else {
-  API_ENDPOINT = 'https://api.example.com';
+  API_ENDPOINT = 'https://backend.yukawa.app';
 }
 
 const post = async(path: string, params: any, sessionToken?: string): Promise<any> => {

@@ -51,12 +51,12 @@ elif env == 'production':
         POSTMARK_SERVER_TOKEN = os.environ['POSTMARK_SERVER_TOKEN']
 
         AUTH_KEY = os.environ['AUTH_KEY']
-        AUTH_URL_PREFIX = 'http://example.com/?authtoken='
+        AUTH_URL_PREFIX = 'https://yukawa.app/?authtoken='
 
         SESSION_KEY = os.environ['SESSION_KEY']
 
         CORS_ENABLED = False
 
-        # CLIP_URL_PREFIX = 'https://yukawa-clips.s3.us-west-2.amazonaws.com/ja/'
+        CLIP_URL_PREFIX = 'https://yukawa-clips.s3.us-west-2.amazonaws.com/'
 else:
     raise ValueError(f'unknown FLASK_ENV {env!r}')
