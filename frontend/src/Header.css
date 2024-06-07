@@ -1,0 +1,12 @@
+.Header {
+  margin-top: 1em;
+  margin-bottom: 2em;
+}
+
+.Header-big {
+  font-size: 2em;
+}
+
+.Header-small {
+  font-size: 0.8em;
+}

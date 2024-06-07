@@ -1,6 +1,8 @@
 import { useSelector } from "react-redux";
-import { RootState, SessionState, thunkEnterStudy } from "./reducers";
+import { RootState, SessionState, thunkEnterStudy, thunkLogOut } from "./reducers";
 import { useAppDispatch } from "./store";
+import Header from "./Header";
+import './Home.css';
 
 export default function Home() {
   const dispatch = useAppDispatch();
@@ -16,11 +18,15 @@ export default function Home() {
     dispatch(thunkEnterStudy());
   };
 
+  const handleLogOut = () => {
+    dispatch(thunkLogOut());
+  };
+
   return (
-    <div>
-      <div>Home {sess.email}</div>
-      <p>|ENV TEST|{import.meta.env.VITE_FOOBAR}|{import.meta.env.MODE}|</p>
-      <p><button onClick={handleClickStudy}>Study</button></p>
+    <div className="Home">
+      <Header />
+      <div>Greetings! You are logged in as {sess.email}</div>
+      <p>You may <button onClick={handleClickStudy}>Study</button> or <button onClick={handleLogOut}>Log Out</button></p>
     </div>
   );
 }

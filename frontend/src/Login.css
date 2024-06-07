@@ -1,0 +1,9 @@
+.Login {
+  margin: 0 auto;
+  max-width: 600px;
+  padding: 0.5em;
+}
+
+.Login-email {
+  width: 15em;
+}

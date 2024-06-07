@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { thunkLogIn } from "./reducers";
 import { useAppDispatch } from "./store";
+import Header from "./Header";
+import './Login.css';
 
 type LoginFormState = 'entering' | 'waiting' | 'invalid_email' | 'email_sent';
 
@@ -29,18 +31,15 @@ export default function Login() {
   };
 
   return (
-    <div>
-      <div>Login</div>
+    <div className="Login">
+      <Header />
       {(formState === 'email_sent') ? (
-        <div>Email sent to {email}</div>
+        <div>We emailed you at {email}</div>
       ) : (
         <>
           <form onSubmit={handleSubmit}>
-            <label>
-              Email:
-              <input type="text" name="email" onChange={handleEmailChange} value={email} />
-            </label>
-            <input type="submit" value="Log In" />
+            If you enter <input className="Login-email" type="text" name="email" onChange={handleEmailChange} value={email} placeholder="your email address" /> and press <input type="submit" value="Send" />,<br />
+            we'll send you a link to log in.
           </form>
           <div>
             {(() => {

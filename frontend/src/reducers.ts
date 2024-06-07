@@ -109,6 +109,11 @@ export const thunkLogIn = (email: string, onUpdate: (resp: APILoginResponse) => 
   }
 };
 
+export const thunkLogOut = (): AppThunk => async (dispatch, _getState) => {
+  localStorage.removeItem(SESSION_TOKEN_LOCAL_STORAGE_KEY);
+  dispatch(actionBecomeLoggingIn());
+};
+
 export const loadClip = async (dispatch: ThunkDispatch<RootState, unknown, UnknownAction>, sessionToken: string) => {
   const questionInfo = await apiGetQuestion(sessionToken);
 
