@@ -38,7 +38,8 @@ export default function Login() {
       ) : (
         <>
           <form onSubmit={handleSubmit}>
-            If you enter <input className="Login-email" type="text" name="email" onChange={handleEmailChange} value={email} placeholder="your email address" /> and press <input type="submit" value="Send" />,<br />
+            If you enter <input className="Login-email" type="text" name="email" onChange={handleEmailChange} value={email} placeholder="your email address" /><br/>
+            and press <input type="submit" value="Send" style={{margin: '4px 0'}} /><br />
             we'll send you a link to log in.
           </form>
           <div>
