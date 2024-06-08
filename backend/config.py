@@ -38,6 +38,8 @@ if env == 'development':
         CORS_ORIGINS = ['*']
 
         CLIP_URL_PREFIX = f'http://{DEV_HOST}:9001/'
+
+        SRS_LOG_VERBOSE = True
 elif env == 'production':
     DB_USER = os.environ['DB_USER']
     DB_PASSWORD = os.environ['DB_PASSWORD']
@@ -58,5 +60,7 @@ elif env == 'production':
         CORS_ORIGINS = ['https://yukawa.app', 'https://yukawa-frontend.netlify.app']
 
         CLIP_URL_PREFIX = 'https://yukawa-clips.s3.us-west-2.amazonaws.com/'
+
+        SRS_LOG_VERBOSE = False
 else:
     raise ValueError(f'unknown FLASK_ENV {env!r}')

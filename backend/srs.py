@@ -18,6 +18,7 @@ import time
 import random
 
 from content import load_prepare_content
+from config import Config
 
 INIT_INTERVAL_AFTER_SUCCESS = 60
 INIT_INTERVAL_AFTER_FAILURE = 10
@@ -34,7 +35,8 @@ CONTENT = load_prepare_content()
 print('loaded content')
 
 def srs_debug(*args):
-    print('SRS:', *args)
+    if Config.SRS_LOG_VERBOSE:
+        print('SRS:', *args)
 
 def init_srs_data():
     return {
