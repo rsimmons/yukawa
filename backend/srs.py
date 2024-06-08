@@ -12,7 +12,7 @@
 #   lt - last time asked (UNIX time)
 #   ct - count of times asked
 #   lg - last clip understood-correctly grade ('y' | 'n' | 'm')
-# last_intro_time - last time new (or presumed-forgetten) atoms were introduced, or None
+# fus - fully understood streak (number of consecutive fully understood clips)
 
 import time
 import random
@@ -28,7 +28,8 @@ MIN_INTERVAL = 10
 MIN_OVERDUE_INTERVAL = 600
 REL_OVERDUE_THRESHOLD = 3
 MAX_INTERVAL_MULTIPLIER = 5 # the maximum interval multiplier for a successful review
-MIN_INTRO_DELAY = 60
+INTRO_FUS_THRESHOLD = 3
+INTRO_IF_FEWER_THAN_KNOWN_ATOMS = 5
 
 print('loading content...')
 CONTENT = load_prepare_content()
@@ -43,7 +44,6 @@ def init_srs_data():
         'atom': {},
         'clip': {},
         'clip_text': {},
-        'last_intro_time': None,
     }
 
 def make_question(lang, frag, clip):
@@ -85,16 +85,23 @@ def pick_question(lang, srs_data, t):
     # srs_debug('srs_data', srs_data)
     atom_due = {}
     srs_debug('atoms')
+    atom_count_known = 0
+    atom_count_tracked = 0
     for atom_id, atom_data in srs_data['atom'].items():
         elapsed = t - atom_data['lt']
         rel_elapsed = elapsed / atom_data['iv']
 
         if (elapsed > MIN_OVERDUE_INTERVAL) and (rel_elapsed > REL_OVERDUE_THRESHOLD):
             atom_due[atom_id] = 'overdue'
+            atom_count_tracked += 1
         elif rel_elapsed >= 1:
             atom_due[atom_id] = 'due'
+            atom_count_tracked += 1
+            atom_count_known += 1
         else:
             atom_due[atom_id] = 'not_due'
+            atom_count_tracked += 1
+            atom_count_known += 1
 
         srs_debug(' ', atom_id, atom_due[atom_id], 'elapsed', elapsed, 'interval', atom_data['iv'])
 
@@ -140,15 +147,16 @@ def pick_question(lang, srs_data, t):
                     })
             break
 
+    random.shuffle(review_clips)
     review_clips.sort(key=lambda x: (-x['info']['due_count'], x['info']['last_time_text_asked'], x['info']['last_time_clip_asked']))
     best_review_clip = review_clips[0] if review_clips else None
-    last_intro_time = srs_data['last_intro_time']
+    fully_understood_streak = srs_data.get('fus', 0)
 
     if best_review_clip and (best_review_clip['info']['due_count'] > 0):
         srs_debug('there are clips with due atoms, do review')
         return make_question(lang, best_review_clip['frag'], best_review_clip['clip'])
-    elif intro_clips and ((last_intro_time is None) or ((t - last_intro_time) > MIN_INTRO_DELAY)):
-        srs_debug('there are no clips with due atoms, and no recent intro, so do intro')
+    elif intro_clips and ((fully_understood_streak >= INTRO_FUS_THRESHOLD) or (atom_count_known < INTRO_IF_FEWER_THAN_KNOWN_ATOMS)):
+        srs_debug('doing intro')
         intro = random.choice(intro_clips)
         return make_question(lang, intro['frag'], intro['clip'])
     else:
@@ -186,6 +194,8 @@ def record_grades(lang, srs_data, clip_id, grades, t):
     understood = grades['understood']
     assert understood in ['y', 'n', 'm']
 
+    assert not ((understood == 'y') and (len(grades['atoms_failed']) > 0))
+
     atom_grades = {atom_id: True for atom_id in frag.atoms}
     for atom_id in grades['atoms_failed']:
         assert atom_id in frag.atoms
@@ -206,6 +216,8 @@ def record_grades(lang, srs_data, clip_id, grades, t):
         'ct': srs_data['clip_text'].get(plain_text, {}).get('ct', 0) + 1,
         'lg': grades['understood'],
     }
+
+    srs_data['fus'] = (srs_data.get('fus', 0) + 1) if (understood == 'y') else 0
 
     for atom_id, understood in atom_grades.items():
         prev_interval = None
