@@ -13,7 +13,7 @@ def log(msg):
 
 @app.before_request
 def ensure_secure():
-    if app.config['ENFORCE_HTTPS']:
+    if app.config['ENFORCE_HTTPS'] and (request.path != '/'): # ignore health check
         assert request.is_secure or (request.headers.get('X-Forwarded-Proto').lower() == 'https')
 
 from app import views
