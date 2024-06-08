@@ -24,6 +24,8 @@ if env == 'development':
     DEV_HOST = '192.168.7.113'
 
     class Config(CommonConfig):
+        ENFORCE_HTTPS = False
+
         DB_URL = f'postgresql+psycopg://postgres@localhost/yukawa'
         DB_ECHO = True
 
@@ -46,6 +48,8 @@ elif env == 'production':
     DB_HOST = os.environ['DB_HOST']
 
     class Config(CommonConfig):
+        ENFORCE_HTTPS = True
+
         DB_URL = f'postgresql+psycopg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/yukawa'
 
         MAIL_ENABLED = True
