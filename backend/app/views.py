@@ -1,5 +1,6 @@
 import time
 import random
+import json
 
 from flask import request, jsonify, g
 from flask_cors import CORS
@@ -28,7 +29,6 @@ def user():
         result = conn.execute(
             db.user.select().where(db.user.c.id == g.user_id)
         ).fetchone()
-    print(result)
 
     return jsonify({
         'status': 'ok',
@@ -69,7 +69,6 @@ def report_clip_understood():
 @require_session
 def pick_question():
     req = request.get_json()
-    print('pick_question:', req)
 
     lang = req['lang']
     assert lang in LANGS
@@ -87,6 +86,14 @@ def pick_question():
 
     question = srs.pick_question(lang, srs_data, t)
 
+    log_obj = {
+        'lang': lang,
+        'user_id': g.user_id,
+        'clip_id': question['clip_id'],
+    }
+    log_obj_json = json.dumps(log_obj)
+    print(f'pick_question {log_obj_json}', flush=True)
+
     return jsonify({
         'status': 'ok',
         'media_url': app.config['CLIP_URL_PREFIX'] + lang + '/' + question['clip_fn'],
@@ -101,19 +108,26 @@ def pick_question():
 @require_session
 def report_question_grades():
     req = request.get_json()
-    print('report_question_grades:', req)
 
     lang = req['lang']
     assert lang in LANGS
 
     t = time.time()
 
+    log_obj = {
+        'lang': lang,
+        'user_id': g.user_id,
+        'clip_id': req['clip_id'],
+        'grades': req['grades'],
+    }
+    log_obj_json = json.dumps(log_obj)
+    print(f'report_question_grades {log_obj_json}', flush=True)
+
     with db.engine.connect() as conn:
         user_srs_row = conn.execute(
             db.user_srs.select().where(db.user_srs.c.user_id == g.user_id).where(db.user_srs.c.lang == lang)
         ).one_or_none()
 
-    print('user_srs_row:', user_srs_row)
     if user_srs_row:
         srs_data = user_srs_row.data
     else:
