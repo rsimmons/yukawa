@@ -114,15 +114,6 @@ def report_question_grades():
 
     t = time.time()
 
-    log_obj = {
-        'lang': lang,
-        'user_id': g.user_id,
-        'clip_id': req['clip_id'],
-        'grades': req['grades'],
-    }
-    log_obj_json = json.dumps(log_obj)
-    print(f'report_question_grades {log_obj_json}', flush=True)
-
     with db.engine.connect() as conn:
         user_srs_row = conn.execute(
             db.user_srs.select().where(db.user_srs.c.user_id == g.user_id).where(db.user_srs.c.lang == lang)
@@ -133,7 +124,17 @@ def report_question_grades():
     else:
         srs_data = srs.init_srs_data()
 
-    srs.record_grades(lang, srs_data, req['clip_id'], req['grades'], t)
+    srs_report = srs.record_grades(lang, srs_data, req['clip_id'], req['grades'], t)
+
+    log_obj = {
+        'lang': lang,
+        'user_id': g.user_id,
+        'clip_id': req['clip_id'],
+        'grades': req['grades'],
+        'srs': srs_report,
+    }
+    log_obj_json = json.dumps(log_obj)
+    print(f'report_question_grades {log_obj_json}', flush=True)
 
     with db.engine.begin() as conn:
         if user_srs_row:

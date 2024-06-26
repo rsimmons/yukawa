@@ -219,6 +219,7 @@ def record_grades(lang, srs_data, clip_id, grades, t):
 
     srs_data['fus'] = (srs_data.get('fus', 0) + 1) if (understood == 'y') else 0
 
+    report = {}
     for atom_id, understood in atom_grades.items():
         prev_interval = None
         if atom_id in srs_data['atom']:
@@ -234,8 +235,16 @@ def record_grades(lang, srs_data, clip_id, grades, t):
             'lg': understood,
         }
         srs_debug(f'atom {atom_id} grade {understood} elapsed {elapsed} interval {prev_interval} -> {new_interval} ')
+        report[atom_id] = {
+            'elapsed': elapsed,
+            'prev_interval': prev_interval,
+            'new_interval': new_interval,
+            'grade': understood,
+        }
 
     srs_debug()
+
+    return report
 
 if __name__ == '__main__':
     srs_data = init_srs_data()
