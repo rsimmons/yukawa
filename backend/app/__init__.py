@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, abort
 
 from config import Config
 
@@ -14,7 +14,8 @@ def log(msg):
 @app.before_request
 def ensure_secure():
     if app.config['ENFORCE_HTTPS'] and (request.path != '/'): # ignore health check
-        assert request.is_secure or (request.headers.get('X-Forwarded-Proto').lower() == 'https')
+        if not (request.is_secure or (request.headers.get('X-Forwarded-Proto').lower() == 'https')):
+            abort(404)
 
 from app import views
 from app import auth
