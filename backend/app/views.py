@@ -90,6 +90,7 @@ def pick_question():
         'lang': lang,
         'user_id': g.user_id,
         'clip_id': question['clip_id'],
+        't': t,
     }
     log_obj_json = json.dumps(log_obj)
     print(f'pick_question {log_obj_json}', flush=True)
@@ -132,6 +133,7 @@ def report_question_grades():
         'clip_id': req['clip_id'],
         'grades': req['grades'],
         'srs': srs_report,
+        't': t,
     }
     log_obj_json = json.dumps(log_obj)
     print(f'report_question_grades {log_obj_json}', flush=True)
