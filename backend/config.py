@@ -20,8 +20,8 @@ class CommonConfig(object):
 env = os.environ.get('FLASK_ENV')
 print(f'FLASK_ENV is {env!r}')
 if env == 'development':
-    # DEV_HOST = 'localhost'
-    DEV_HOST = '192.168.7.113'
+    DEV_HOST = 'localhost'
+    # DEV_HOST = '192.168.7.113'
 
     class Config(CommonConfig):
         ENFORCE_HTTPS = False
