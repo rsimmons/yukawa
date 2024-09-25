@@ -21,7 +21,7 @@ eleven_client = client = ElevenLabs()
 
 VIDEO_WIDTH = 854
 VIDEO_HEIGHT = 480
-AUDIO_PADDING = 0.5 # how long to show image before+after audio
+AUDIO_PADDING = 1.5 # how long to show image before+after audio
 
 def generate_id():
     return ''.join(random.choice(string.ascii_letters+string.digits) for i in range(12))
@@ -67,6 +67,7 @@ def build(args):
                             text=plaintext,
                             voice=ELEVEN_VOICE,
                             model=ELEVEN_MODEL,
+                            output_format='mp3_44100_192',
                         )
                         save(audio, audio_path)
 
