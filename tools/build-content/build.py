@@ -5,6 +5,7 @@ import random
 import string
 import hashlib
 import json
+import glob
 
 import yaml
 from PIL import Image, ImageOps
@@ -64,96 +65,194 @@ def generate_audios(plaintext, voices, output_dir):
         audio_fns.append(audio_fn)
     return audio_fns
 
-def build_fragments(args):
+def is_string_list(v):
+    return isinstance(v, list) and all(isinstance(x, str) for x in v)
+
+def build(args):
+    def validate_atom_list(atom_list):
+        assert is_string_list(atom_list), 'atom list must be list of strings'
+        for atom_id in atom_list:
+            assert atom_id in all_atom_ids, f'unknown atom id {atom_id}'
+
+    def build_text_trans_audio(item, manifest):
+        assert 'text' in item, 'text missing'
+        assert isinstance(item['text'], str), 'text must be str'
+        assert 'trans' in item, 'trans missing'
+        assert isinstance(item['trans'], str) or is_string_list(item['trans']), 'trans not str or str list'
+
+        anno = parse_annotated_text(item['text'])
+        plaintext = plain_text_from_annotated_text(anno)
+
+        manifest['text'] = plaintext
+        manifest['trans'] = [item['trans']] if isinstance(item['trans'], str) else item
+        manifest['anno'] = anno
+
+        manifest['audio'] = generate_audios(plaintext, voices, args.output_media_dir)
+
+    # returns list of image filenames
+    def build_image_pattern(image_pattern, manifest, purpose):
+        if purpose == 'pres':
+            width = VISUALS_WIDTH
+            height = VISUALS_HEIGHT
+        elif purpose == 'quiz':
+            width = VISUALS_WIDTH_HALF
+            height = VISUALS_HEIGHT_HALF
+        else:
+            assert False, 'invalid build_image_pattern purpose'
+
+        output_images = []
+        for source_image_fn in glob.glob(image_pattern, root_dir=args.source_media_dir):
+            output_image_fn = prepare_image(f'{args.source_media_dir}/{source_image_fn}', width, height, args.output_media_dir)
+            output_images.append(output_image_fn)
+        return output_images
+
+    def build_images(item, manifest, purpose):
+        if 'image' in item:
+            output_images = build_image_pattern(item['image'], manifest, purpose)
+            manifest['images'] = output_images
+        elif 'images' in item:
+            assert is_string_list(item['images']), 'images must be list of strings'
+
+            manifest['images'] = []
+            for source_image_pattern in item['images']:
+                output_images = build_image_pattern(source_image_pattern, manifest, purpose)
+                manifest['images'].extend(output_images)
+        else:
+            assert False, 'no image or images'
+
+    def build_pres(pres):
+        if pres['kind'] == 'rand':
+            assert 'reps' in pres, 'rand reps missing'
+            assert isinstance(pres['reps'], int), 'rand reps must be int'
+            assert 'items' in pres, 'rand items missing'
+            assert isinstance(pres['items'], list), 'rand items must be list'
+
+            pres_manifest = {
+                'kind': 'rand',
+                'reps': pres['reps'],
+                'items': [],
+            }
+            for item in pres['items']:
+                item_manifest = {}
+
+                build_text_trans_audio(item, item_manifest)
+
+                build_images(item, item_manifest, 'pres')
+
+                pres_manifest['items'].append(item_manifest)
+
+            return pres_manifest
+        elif pres['kind'] == 'seq':
+            assert False, 'seq pres not implemented'
+        elif pres['kind'] == 'audio':
+            pres_manifest = {
+                'kind': 'audio',
+            }
+            build_text_trans_audio(pres, pres_manifest)
+
+            return pres_manifest
+        else:
+            assert False, f'unknown kind {pres["kind"]}'
+
+    manifest = {}
+
+    with open(f'{args.meta_dir}/atoms.yaml') as f:
+        source_atoms = yaml.safe_load(f)
+
+    all_atom_ids = set()
+    manifest['atoms'] = []
+    for atom in source_atoms:
+        for k in atom:
+            assert k in ['id', 'meaning', 'notes'], f'unknown key {k} in atom {atom["id"]}'
+
+        if atom['id'] in all_atom_ids:
+            print(f'ERROR: duplicate atom id {atom["id"]}')
+            assert False
+        all_atom_ids.add(atom['id'])
+
+        assert ('meaning' in atom) or ('notes' in atom), f'atom {atom["id"]} is missing meaning or notes'
+
+        atom_manifest = {
+            'id': atom['id'],
+            'meaning': atom.get('meaning'),
+            'notes': atom.get('notes'),
+        }
+        manifest['atoms'].append(atom_manifest)
+
     voices = args.voices.split('|')
 
-    source_fragments_meta_path = f'{args.meta_dir}/new_fragments.yaml'
+    with open(f'{args.meta_dir}/content.yaml') as f:
+        source_content = yaml.safe_load(f)
 
-    with open(source_fragments_meta_path) as f:
-        source_fragments_meta = yaml.safe_load(f)
+    manifest['lessons'] = []
+    manifest['quizzes'] = []
+    for piece in source_content:
+        if piece['kind'] == 'lesson':
+            assert 'intro_atoms' in piece, 'lesson intro_atoms missing'
+            validate_atom_list(piece['intro_atoms'])
+            assert len(piece['intro_atoms']) >= 1, 'lesson intro_atoms must have at least one item'
+            if 'ignore_atoms' in piece:
+                validate_atom_list(piece['ignore_atoms'])
+            assert 'pres' in piece, 'lesson pres missing'
 
-    frags_manifest = []
-    for frag in source_fragments_meta:
-        assert ('text' in frag) and isinstance(frag['text'], str), 'text missing or not str'
-        assert ('trans' in frag) and (isinstance(frag['trans'], str) or isinstance(frag['trans'], list)), 'trans missing or not str or list'
-        assert ('images' in frag) and isinstance(frag['images'], list), 'images missing or not list'
+            piece_manifest = {
+                'intro_atoms': piece['intro_atoms'],
+                'ignore_atoms': piece['ignore_atoms'] if 'ignore_atoms' in piece else [],
+            }
 
-        frag_manifest = {}
+            piece_manifest['pres'] = build_pres(piece['pres'])
 
-        # parse annotations from text, get plaintext
-        anno = parse_annotated_text(frag['text'])
-        plaintext = plain_text_from_annotated_text(anno)
-        frag_manifest['plaintext'] = plaintext
+            manifest['lessons'].append(piece_manifest)
+        elif piece['kind'] == 'quiz':
+            def build_choice(choice, correct):
+                choice_manifest = {}
 
-        frag_manifest['audio'] = generate_audios(plaintext, voices, args.output_media_dir)
+                build_images(choice, choice_manifest, 'quiz')
 
-        # reformat sources images
-        frag_manifest['images'] = []
-        with tempfile.TemporaryDirectory() as tmpdirn:
-            for source_image_fn in frag['images']:
-                output_image_fn = prepare_image(f'{args.source_media_dir}/{source_image_fn}', VISUALS_WIDTH, VISUALS_HEIGHT, args.output_media_dir)
-                frag_manifest['images'].append(output_image_fn)
+                if not correct:
+                    if 'fail_atoms' in choice:
+                        validate_atom_list(choice['fail_atoms'])
+                    choice_manifest['fail_atoms'] = choice['fail_atoms'] if 'fail_atoms' in choice else []
 
-        frags_manifest.append(frag_manifest)
+                return choice_manifest
 
-    # write out fragments manifest
-    with open(f'{args.meta_dir}/new_fragments.json', 'w') as f:
-        f.write(json.dumps(frags_manifest))
+            assert 'target_atoms' in piece, 'quiz target_atoms missing'
+            assert 'pres' in piece, 'quiz pres missing'
+            assert 'choices' in piece, 'quiz choices missing'
 
-def build_quizzes(args):
-    voices = args.voices.split('|')
+            quiz_manifest = {}
 
-    source_quizzes_meta_path = f'{args.meta_dir}/quizzes.yaml'
+            validate_atom_list(piece['target_atoms'])
+            quiz_manifest['target_atoms'] = piece['target_atoms']
 
-    with open(source_quizzes_meta_path) as f:
-        source_quizzes_meta = yaml.safe_load(f)
+            quiz_manifest['pres'] = build_pres(piece['pres'])
 
-    quizzes_manifest = []
-    for quiz in source_quizzes_meta:
-        assert ('target_atoms' in quiz) and isinstance(quiz['target_atoms'], list), 'target_atom missing or not list'
-        assert ('text' in quiz) and isinstance(quiz['text'], str), 'text missing or not str'
-        assert ('trans' in quiz) and (isinstance(quiz['trans'], str) or isinstance(quiz['trans'], list)), 'trans missing or not str or list'
-        assert ('choices' in quiz) and isinstance(quiz['choices'], dict), 'choices missing or not dict'
-        assert ('correct' in quiz['choices']) and isinstance(quiz['choices']['correct'], list), 'choices->correct missing or not list'
-        assert ('incorrect' in quiz['choices']) and isinstance(quiz['choices']['incorrect'], list), 'choices->incorrect missing or not list'
-        assert len(quiz['choices']['correct']) >= 1, 'choices->correct must have at least one item'
-        assert len(quiz['choices']['incorrect']) >= 3, 'choices->incorrect must have at least three items'
-        for choice in quiz['choices']['correct']:
-            assert ('image' in choice) and isinstance(choice['image'], str), 'choice->image missing or not str'
-        for choice in quiz['choices']['incorrect']:
-            assert ('image' in choice) and isinstance(choice['image'], str), 'choice->image missing or not str'
+            assert 'correct' in piece['choices'], 'quiz choices correct missing'
+            assert 'incorrect' in piece['choices'], 'quiz choices incorrect missing'
+            quiz_manifest['choices'] = {'correct': [], 'incorrect': []}
 
-        quiz_manifest = {}
+            for choice in piece['choices']['correct']:
+                quiz_manifest['choices']['correct'].append(build_choice(choice, True))
+            for choice in piece['choices']['incorrect']:
+                quiz_manifest['choices']['incorrect'].append(build_choice(choice, False))
 
-        # parse annotations from text, get plaintext
-        anno = parse_annotated_text(quiz['text'])
-        plaintext = plain_text_from_annotated_text(anno)
-        quiz_manifest['plaintext'] = plaintext
+            assert len(piece['choices']['correct']) >= 1, 'quiz choices correct must have at least one item'
+            assert len(piece['choices']['incorrect']) >= 3, 'quiz choices incorrect must have at least three items'
 
-        quiz_manifest['audio'] = generate_audios(plaintext, voices, args.output_media_dir)
+            manifest['quizzes'].append(quiz_manifest)
+        else:
+            print(f'unknown kind {piece["kind"]}')
 
-        quiz_manifest['choices'] = {'correct': [], 'incorrect': []}
-        for choice in quiz['choices']['correct']:
-            output_image_fn = prepare_image(f'{args.source_media_dir}/{choice["image"]}', VISUALS_WIDTH_HALF, VISUALS_HEIGHT_HALF, args.output_media_dir)
-            quiz_manifest['choices']['correct'].append({'image': output_image_fn})
-        for choice in quiz['choices']['incorrect']:
-            output_image_fn = prepare_image(f'{args.source_media_dir}/{choice["image"]}', VISUALS_WIDTH_HALF, VISUALS_HEIGHT_HALF, args.output_media_dir)
-            quiz_manifest['choices']['incorrect'].append({'image': output_image_fn})
-
-        quizzes_manifest.append(quiz_manifest)
-
-    # write out quizzes manifest
-    with open(f'{args.meta_dir}/quizzes.json', 'w') as f:
-        f.write(json.dumps(quizzes_manifest))
+    with open(f'{args.meta_dir}/build.json', 'w') as f:
+        f.write(json.dumps(manifest))
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lang', help='language code', required=True)
-parser.add_argument('--meta-dir', help='source and output metadata', required=True)
+parser.add_argument('--meta-dir', help='source metadata', required=True)
 parser.add_argument('--source-media-dir', help='source media directory', required=True)
 parser.add_argument('--output-media-dir', help='output media directory', required=True)
 parser.add_argument('--voices', help='|-separated list of voices to use', required=True)
 
 args = parser.parse_args()
 
-build_fragments(args)
-build_quizzes(args)
+build(args)
