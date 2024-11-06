@@ -1,5 +1,5 @@
 import { useSelector } from "react-redux";
-import { RootState, SessionState, thunkEnterStudy, thunkLogOut } from "./reducers";
+import { RootState, SessionState, actionEnterStudy, thunkLogOut } from "./reducers";
 import { useAppDispatch } from "./store";
 import Header from "./Header";
 import './Home.css';
@@ -15,7 +15,7 @@ export default function Home() {
   });
 
   const handleClickStudy = () => {
-    dispatch(thunkEnterStudy());
+    dispatch(actionEnterStudy());
   };
 
   const handleLogOut = () => {

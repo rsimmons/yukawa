@@ -65,9 +65,9 @@ def report_clip_understood():
         'status': 'ok',
     })
 
-@app.route('/pick_question', methods=['POST'])
+@app.route('/pick_activity', methods=['POST'])
 @require_session
-def pick_question():
+def pick_activity():
     req = request.get_json()
 
     lang = req['lang']
@@ -84,30 +84,26 @@ def pick_question():
     else:
         srs_data = srs.init_srs_data()
 
-    question = srs.pick_question(lang, srs_data, t)
+    activity = srs.pick_activity(lang, srs_data, t)
 
-    log_obj = {
-        'lang': lang,
-        'user_id': g.user_id,
-        'clip_id': question['clip_id'],
-        't': t,
-    }
-    log_obj_json = json.dumps(log_obj)
-    print(f'pick_question {log_obj_json}', flush=True)
+    # log_obj = {
+    #     'lang': lang,
+    #     'user_id': g.user_id,
+    #     'clip_id': question['clip_id'],
+    #     't': t,
+    # }
+    # log_obj_json = json.dumps(log_obj)
+    # print(f'pick_activity {log_obj_json}', flush=True)
 
     return jsonify({
         'status': 'ok',
-        'media_url': app.config['CLIP_URL_PREFIX'] + lang + '/' + question['clip_fn'],
-        'clip_id': question['clip_id'],
-        'spans': question['spans'],
-        'translations': question['translations'],
-        'notes': question['notes'],
-        'atom_info': question['atom_info'],
+        'media_url_prefix': app.config['CLIP_URL_PREFIX'] + lang + '/',
+        'activity': activity,
     })
 
-@app.route('/report_question_grades', methods=['POST'])
+@app.route('/report_result', methods=['POST'])
 @require_session
-def report_question_grades():
+def report_result():
     req = request.get_json()
 
     lang = req['lang']
@@ -125,18 +121,17 @@ def report_question_grades():
     else:
         srs_data = srs.init_srs_data()
 
-    srs_report = srs.record_grades(lang, srs_data, req['clip_id'], req['grades'], t)
+    srs_report = srs.report_result(lang, srs_data, req['result'], t)
 
     log_obj = {
         'lang': lang,
         'user_id': g.user_id,
-        'clip_id': req['clip_id'],
-        'grades': req['grades'],
+        'result': req['result'],
         'srs': srs_report,
         't': t,
     }
     log_obj_json = json.dumps(log_obj)
-    print(f'report_question_grades {log_obj_json}', flush=True)
+    print(f'report_result {log_obj_json}', flush=True)
 
     with db.engine.begin() as conn:
         if user_srs_row:

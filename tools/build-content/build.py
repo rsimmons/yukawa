@@ -68,10 +68,16 @@ def generate_audios(plaintext, voices, output_dir):
 def is_string_list(v):
     return isinstance(v, list) and all(isinstance(x, str) for x in v)
 
+def get_anno_atoms_set(anno):
+    atoms = set()
+    for span in anno:
+        if 'a' in span:
+            atoms.add(span['a'])
+    return atoms
+
 def build(args):
-    def validate_atom_list(atom_list):
-        assert is_string_list(atom_list), 'atom list must be list of strings'
-        for atom_id in atom_list:
+    def validate_atom_seq(atom_seq):
+        for atom_id in atom_seq:
             assert atom_id in all_atom_ids, f'unknown atom id {atom_id}'
 
     def build_text_trans_audio(item, manifest):
@@ -121,7 +127,17 @@ def build(args):
             assert False, 'no image or images'
 
     def build_pres(pres):
-        if pres['kind'] == 'rand':
+        if pres['kind'] == 'single':
+            pres_manifest = {
+                'kind': 'single',
+                'item': {},
+            }
+            build_text_trans_audio(pres['item'], pres_manifest['item'])
+
+            return pres_manifest
+        elif pres['kind'] == 'seq':
+            assert False, 'seq pres not implemented'
+        elif pres['kind'] == 'rand':
             assert 'reps' in pres, 'rand reps missing'
             assert isinstance(pres['reps'], int), 'rand reps must be int'
             assert 'items' in pres, 'rand items missing'
@@ -142,15 +158,17 @@ def build(args):
                 pres_manifest['items'].append(item_manifest)
 
             return pres_manifest
-        elif pres['kind'] == 'seq':
-            assert False, 'seq pres not implemented'
-        elif pres['kind'] == 'audio':
-            pres_manifest = {
-                'kind': 'audio',
-            }
-            build_text_trans_audio(pres, pres_manifest)
+        else:
+            assert False, f'unknown kind {pres["kind"]}'
 
-            return pres_manifest
+    def get_built_pres_atom_set(pres):
+        if pres['kind'] == 'single':
+            return get_anno_atoms_set(pres['item']['anno'])
+        elif pres['kind'] in ['rand', 'seq']:
+            atom_set = set()
+            for item in pres['items']:
+                atom_set.update(get_anno_atoms_set(item['anno']))
+            return atom_set
         else:
             assert False, f'unknown kind {pres["kind"]}'
 
@@ -189,10 +207,10 @@ def build(args):
     for piece in source_content:
         if piece['kind'] == 'lesson':
             assert 'intro_atoms' in piece, 'lesson intro_atoms missing'
-            validate_atom_list(piece['intro_atoms'])
+            validate_atom_seq(piece['intro_atoms'])
             assert len(piece['intro_atoms']) >= 1, 'lesson intro_atoms must have at least one item'
             if 'ignore_atoms' in piece:
-                validate_atom_list(piece['ignore_atoms'])
+                validate_atom_seq(piece['ignore_atoms'])
             assert 'pres' in piece, 'lesson pres missing'
 
             piece_manifest = {
@@ -201,6 +219,15 @@ def build(args):
             }
 
             piece_manifest['pres'] = build_pres(piece['pres'])
+
+            pres_atoms_set = get_built_pres_atom_set(piece_manifest['pres'])
+            validate_atom_seq(pres_atoms_set)
+            intro_atoms_set = set(piece['intro_atoms'])
+            ignore_atoms_set = set(piece.get('ignore_atoms', []))
+            assert intro_atoms_set.issubset(pres_atoms_set), 'lesson intro_atoms not all in pres'
+            assert ignore_atoms_set.issubset(pres_atoms_set), 'lesson ignore_atoms not all in pres'
+            dep_atoms = sorted(list(pres_atoms_set - intro_atoms_set - ignore_atoms_set))
+            piece_manifest['dep_atoms'] = dep_atoms
 
             manifest['lessons'].append(piece_manifest)
         elif piece['kind'] == 'quiz':
@@ -211,7 +238,7 @@ def build(args):
 
                 if not correct:
                     if 'fail_atoms' in choice:
-                        validate_atom_list(choice['fail_atoms'])
+                        validate_atom_seq(choice['fail_atoms'])
                     choice_manifest['fail_atoms'] = choice['fail_atoms'] if 'fail_atoms' in choice else []
 
                 return choice_manifest
@@ -222,10 +249,16 @@ def build(args):
 
             quiz_manifest = {}
 
-            validate_atom_list(piece['target_atoms'])
+            validate_atom_seq(piece['target_atoms'])
             quiz_manifest['target_atoms'] = piece['target_atoms']
 
             quiz_manifest['pres'] = build_pres(piece['pres'])
+
+            pres_atoms_set = get_built_pres_atom_set(quiz_manifest['pres'])
+            validate_atom_seq(pres_atoms_set)
+            assert set(piece['target_atoms']).issubset(pres_atoms_set), 'quiz target_atoms not all in pres'
+            dep_atoms = sorted(list(pres_atoms_set - set(piece['target_atoms'])))
+            quiz_manifest['dep_atoms'] = dep_atoms
 
             assert 'correct' in piece['choices'], 'quiz choices correct missing'
             assert 'incorrect' in piece['choices'], 'quiz choices incorrect missing'
@@ -244,7 +277,7 @@ def build(args):
             print(f'unknown kind {piece["kind"]}')
 
     with open(f'{args.meta_dir}/build.json', 'w') as f:
-        f.write(json.dumps(manifest))
+        f.write(json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False))
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lang', help='language code', required=True)

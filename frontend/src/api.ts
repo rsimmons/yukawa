@@ -68,71 +68,119 @@ export const apiGetUserInfo = async (sessionToken: string): Promise<APIUserInfo>
   return resp;
 };
 
-export interface APIClipInfo {
-  readonly clipId: string;
-  readonly mediaUrl: string;
-  readonly transcription: string;
-  readonly translation: string;
-}
-
-export const apiGetRandomClip = async (sessionToken: string): Promise<APIClipInfo> => {
-  const resp = await post('/random_clip', {}, sessionToken);
-
-  return {
-    clipId: resp.clip_id,
-    mediaUrl: resp.media_url,
-    transcription: resp.transcription,
-    translation: resp.translation,
-  };
-};
-
-export type APIGrade = 'n' | 'm' | 'y';
-export const apiReportClipUnderstood = async (sessionToken: string, clipId: string, grade: APIGrade): Promise<void> => {
-  await post('/report_clip_understood', { clip_id: clipId, grade }, sessionToken);
-};
-
 export interface APISpan {
   readonly t: string; // text
   readonly a?: string; // atom id
 }
+
+export type APIAnno = ReadonlyArray<APISpan>;
 
 export interface APIAtomInfo {
   readonly meaning: string | null;
   readonly notes: string | null;
 }
 
-export interface APIQuestion {
-  readonly clipId: string;
-  readonly mediaUrl: string;
-  readonly spans: ReadonlyArray<APISpan>;
-  readonly translations: ReadonlyArray<string>;
-  readonly notes: string | null;
+export interface APIActivityPresItem {
+  readonly text: string;
+  readonly trans: ReadonlyArray<string>;
+  readonly anno: APIAnno;
+  readonly audioFn?: string;
+  readonly imageFn?: string;
+}
+
+export interface APIActivityPres {
+  readonly items: ReadonlyArray<APIActivityPresItem>;
+}
+
+export interface APIQuizChoice {
+  readonly correct: boolean;
+  readonly imageFn: string;
+  readonly failAtoms?: ReadonlyArray<string>;
+}
+
+export type APIActivity =
+  {
+    readonly kind: 'lesson';
+    readonly introAtoms: ReadonlyArray<string>;
+    readonly pres: APIActivityPres;
+  } | {
+    readonly kind: 'quiz';
+    readonly targetAtoms: ReadonlyArray<string>;
+    readonly pres: APIActivityPres;
+    readonly choices: ReadonlyArray<APIQuizChoice>;
+  };
+
+const mapActivityPres = (pres: any): APIActivityPres => {
+  return {
+    items: pres.items.map((item: any) => ({
+      text: item.text,
+      trans: item.trans,
+      anno: item.anno,
+      audioFn: item.audio_fn,
+      imageFn: item.image_fn,
+    })),
+  };
+}
+
+const mapActivity = (activity: any): APIActivity => {
+  switch (activity.kind) {
+    case 'lesson':
+      return {
+        kind: 'lesson',
+        introAtoms: activity.intro_atoms,
+        pres: mapActivityPres(activity.pres),
+      };
+
+    case 'quiz':
+      return {
+        kind: 'quiz',
+        targetAtoms: activity.target_atoms,
+        pres: mapActivityPres(activity.pres),
+        choices: activity.choices.map((choice: any) => ({
+          correct: choice.correct,
+          imageFn: choice.image_fn,
+          failAtoms: choice.fail_atoms,
+        })),
+      };
+
+    default:
+      throw new APIError('unknown activity kind');
+  }
+};
+
+export interface APIPickActivityResponse {
+  readonly mediaUrlPrefix: string;
+  readonly activity: APIActivity;
   readonly atomInfo: {[key: string]: APIAtomInfo};
 }
 
-export const apiGetQuestion = async (sessionToken: string): Promise<APIQuestion> => {
-  const resp = await post('/pick_question', {'lang': 'es'}, sessionToken);
+export const apiPickActivity = async (sessionToken: string): Promise<APIPickActivityResponse> => {
+  const resp = await post('/pick_activity', {'lang': 'es'}, sessionToken);
 
   return {
-    clipId: resp.clip_id,
-    mediaUrl: resp.media_url,
-    spans: resp.spans,
-    translations: resp.translations,
-    notes: resp.notes,
+    mediaUrlPrefix: resp.media_url_prefix,
+    activity: mapActivity(resp.activity),
     atomInfo: resp.atom_info,
   };
 };
 
-export interface APIQuestionGrades {
-  readonly heard: APIGrade;
-  readonly understood: APIGrade;
-  readonly atoms_failed: ReadonlyArray<string>;
+export interface APIReportedResult {
+  readonly atomsIntroduced: ReadonlyArray<string>;
+  readonly atomsExposed: ReadonlyArray<string>;
+  readonly atomsForgot: ReadonlyArray<string>;
+  readonly atomsPassed: ReadonlyArray<string>;
+  readonly atomsFailed: ReadonlyArray<string>;
 }
 
-export const apiReportQuestionGrades = async (sessionToken: string, lang: string, clipId: string, grades: APIQuestionGrades): Promise<void> => {
-  await post('/report_question_grades', {
+export const apiReportResult = async (sessionToken: string, lang: string, result: APIReportedResult): Promise<void> => {
+  await post('/report_result', {
     lang,
-    clip_id: clipId,
-    grades,
+    result: {
+      atoms_introduced: result.atomsIntroduced,
+      atoms_exposed: result.atomsExposed,
+      atoms_forgot: result.atomsForgot,
+      atoms_passed: result.atomsPassed,
+      atoms_failed: result.atomsFailed,
+    },
   }, sessionToken);
 }

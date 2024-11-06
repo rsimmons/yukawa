@@ -1,11 +1,13 @@
 import { useSelector } from "react-redux";
-import { InternalPage, RootState, actionStudyAllowGrading, actionStudyBeginGrading, actionStudyGradeHearing, actionStudyToggleAtomGrade, thunkGradeUnderstanding, thunkSubmitGradeAtoms } from "./reducers";
-import { AppDispatch, useAppDispatch } from "./store";
-import { useEffect, useRef, useState } from "react";
-import { touchAvail } from "./util";
+import { RootState } from "./reducers";
+import { useAppDispatch } from "./store";
+import { useRef } from "react";
+import { useEffectOnce, useRAF } from "./util";
+import { actionStudyPresItemFinished, PreloadMap, StudyState, thunkLessonCompleted, thunkQuizAnswered, thunkStudyInit } from "./studyReducer";
 import './Study.css';
-import { APIGrade, APIQuestion } from "./api";
+import { APIActivityPresItem } from "./api";
 
+/*
 function AtomPopup(props: {atomId: string, meaning: string | null, notes: string | null}) {
   return (
     <div className="Study-atom-popup">
@@ -109,21 +111,68 @@ function StudyButton(props: {text: string, shortcut?: string, onClick: () => voi
     )}</button>
   );
 }
+*/
+
+const AUDIO_PADDING = 1.0;
+function PresItem(props: {item: APIActivityPresItem, preloadMap: PreloadMap, finished: () => void}) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const playedAudio = useRef(false);
+  const audioEndTime = useRef<number | null>(null);
+  const notifiedFinished = useRef(false);
+
+  useRAF((elapsedTime) => {
+    if (!playedAudio.current && (elapsedTime > AUDIO_PADDING)) {
+      if (audioRef.current) {
+        audioRef.current.play();
+        playedAudio.current = true;
+      }
+    } else if (playedAudio.current) {
+      if (audioEndTime.current === null) {
+        if (audioRef.current) {
+          if (audioRef.current.ended) {
+            audioEndTime.current = elapsedTime;
+          }
+        }
+      } else {
+        if (elapsedTime > (audioEndTime.current + AUDIO_PADDING)) {
+          if (!notifiedFinished.current) {
+            props.finished();
+            notifiedFinished.current = true;
+          }
+        }
+      }
+    }
+  });
+
+  return (
+    <div>
+      {props.item.imageFn && (
+        <img src={props.preloadMap[props.item.imageFn]} />
+      )}
+      <audio src={props.preloadMap[props.item.audioFn!]} autoPlay={false} ref={audioRef} />
+      {/* <div>{props.item.text}</div> */}
+    </div>
+  );
+}
 
 export default function Study() {
   const dispatch = useAppDispatch();
 
-  const page: InternalPage = useSelector((state: RootState) => {
+  const studyState: StudyState = useSelector((state: RootState) => {
     if (state.type !== 'loggedIn') {
       throw new Error('invalid state');
     }
-    return state.sess.page;
+    if (state.sess.page.type !== 'study') {
+      throw new Error('invalid page');
+    }
+    return state.sess.page.studyState;
   });
 
-  if (page.type !== 'study') {
-    throw new Error('invalid page');
-  }
+  useEffectOnce(() => {
+    dispatch(thunkStudyInit());
+  });
 
+  /*
   const handleBeginGrading = () => {
     dispatch(actionStudyBeginGrading());
   };
@@ -197,7 +246,67 @@ export default function Study() {
       }
     }
   };
+  */
 
+  return (
+    <div>
+      {(studyState.preloadedActivity ? (
+        <div>{(() => {
+          const preAct = studyState.preloadedActivity;
+          const presIdx = preAct.state.presIndex;
+          const presItem = preAct.activity.pres.items[presIdx];
+
+          const handleContinueLesson = () => {
+            dispatch(thunkLessonCompleted());
+          };
+
+          return (
+            <div key={preAct.uid}>
+              <PresItem
+                key={presIdx}
+                item={presItem}
+                preloadMap={preAct.preloadMap}
+                finished={() => {
+                  dispatch(actionStudyPresItemFinished());
+                }}
+              />
+              {(() => {
+                switch (preAct.activity.kind) {
+                  case 'lesson':
+                    return (
+                      <div style={{textAlign: 'center'}}>{preAct.state.everFinishedPres ? (
+                        <button onClick={handleContinueLesson}>Continue</button>
+                      ) : (
+                        <button onClick={handleContinueLesson}>Skip</button>
+                      )}</div>
+                    );
+
+                  case 'quiz':
+                    return (
+                      <div>
+                        {preAct.activity.choices.map((choice) => {
+                          const handleClick = () => {
+                            dispatch(thunkQuizAnswered(choice));
+                          };
+                          return <img key={choice.imageFn} src={preAct.preloadMap[choice.imageFn]} onClick={handleClick} />
+                        })}
+                      </div>
+                    );
+
+                  default:
+                    throw new Error('invalid activity kind');
+                }
+              })()}
+            </div>
+          );
+        })()}</div>
+      ) : (
+        <div>Loading...</div>
+      ))}
+    </div>
+  );
+
+  /*
   const question = page.question;
   return (
     <div>
@@ -283,4 +392,5 @@ export default function Study() {
       })()}
     </div>
   );
+  */
 }

@@ -1,5 +1,7 @@
 import { ThunkAction, ThunkDispatch, UnknownAction, createAction, createReducer } from '@reduxjs/toolkit'
-import { APIError, APIGrade, APILoginResponse, APIQuestion, apiAuth, apiGetQuestion, apiGetUserInfo, apiLogin, apiReportQuestionGrades } from './api';
+import { APIError, APILoginResponse, apiAuth, apiGetUserInfo, apiLogin } from './api';
+
+import studyReducer, { StudyState } from "./studyReducer";
 
 const SESSION_TOKEN_LOCAL_STORAGE_KEY = 'yukawa-session-token';
 
@@ -8,16 +10,8 @@ export type StudyStage = 'listening' | 'grading_allowed' | 'grading_hearing' | '
 export type InternalPage = {
   readonly type: 'home';
 } | {
-  readonly type: 'studyLoading';
-} | {
   readonly type: 'study';
-  readonly question: APIQuestion;
-  readonly stage: StudyStage;
-  readonly grades: {
-    readonly heard: APIGrade | null;
-    readonly understood: APIGrade | null;
-    readonly atomsFailed: ReadonlyArray<string>;
-  };
+  readonly studyState: StudyState;
 };
 
 export interface SessionState {
@@ -114,115 +108,13 @@ export const thunkLogOut = (): AppThunk => async (dispatch, _getState) => {
   dispatch(actionBecomeLoggingIn());
 };
 
-export const loadClip = async (dispatch: ThunkDispatch<RootState, unknown, UnknownAction>, sessionToken: string) => {
-  const questionInfo = await apiGetQuestion(sessionToken);
-
-  // fetch entire clip as blob, make object URL
-  const blob = await fetch(questionInfo.mediaUrl).then((r) => r.blob());
-  const mediaUrl = URL.createObjectURL(blob);
-
-  dispatch(actionStudyLoadQuestion({
-    ...questionInfo,
-    mediaUrl,
-  }));
-}
-
-export const thunkEnterStudy = (): AppThunk => async (dispatch, getState) => {
-  const state = getState();
-  if (state.type !== 'loggedIn') {
-    throw new Error('invalid state');
-  }
-
-  dispatch(actionEnterStudyLoading());
-
-  const sessionToken = state.sess.sessionToken;
-  await loadClip(dispatch, sessionToken);
-};
-
-
-export const thunkGradeUnderstanding = (understood: APIGrade): AppThunk => async (dispatch, getState) => {
-  const state = getState();
-  if (state.type !== 'loggedIn') {
-    throw new Error('invalid state');
-  }
-  if (state.sess.page.type !== 'study') {
-    throw new Error('invalid page');
-  }
-  if (state.sess.page.stage !== 'grading_understanding') {
-    throw new Error('invalid stage');
-  }
-  if (state.sess.page.grades.heard === null) {
-    throw new Error('invalid state');
-  }
-
-  if (understood === 'y') {
-    dispatch(actionStudyLoadingNext());
-
-    const sessionToken = state.sess.sessionToken;
-
-    await apiReportQuestionGrades(sessionToken, 'es', state.sess.page.question.clipId, {
-      heard: state.sess.page.grades.heard,
-      understood,
-      atoms_failed: state.sess.page.grades.atomsFailed,
-    });
-
-    await loadClip(dispatch, sessionToken);
-  } else {
-    dispatch(actionStudyGradeUnderstanding({
-      understood,
-    }));
-  }
-};
-
-export const thunkSubmitGradeAtoms = (): AppThunk => async (dispatch, getState) => {
-  const state = getState();
-  if (state.type !== 'loggedIn') {
-    throw new Error('invalid state');
-  }
-  if (state.sess.page.type !== 'study') {
-    throw new Error('invalid page');
-  }
-  if (state.sess.page.stage !== 'grading_atoms') {
-    throw new Error('invalid stage');
-  }
-  if (state.sess.page.grades.heard === null) {
-    throw new Error('invalid state');
-  }
-  if (state.sess.page.grades.understood === null) {
-    throw new Error('invalid state');
-  }
-
-  dispatch(actionStudyLoadingNext());
-
-  const sessionToken = state.sess.sessionToken;
-
-  await apiReportQuestionGrades(sessionToken, 'es', state.sess.page.question.clipId, {
-    heard: state.sess.page.grades.heard,
-    understood: state.sess.page.grades.understood,
-    atoms_failed: state.sess.page.grades.atomsFailed,
-  });
-
-  await loadClip(dispatch, sessionToken);
-};
-
 export const actionCrash = createAction<string>('crash');
 export const actionBecomeLoggingIn = createAction('becomeLoggingIn');
 export const actionBecomeLoggedIn = createAction<{
   readonly sessionToken: string;
   readonly email: string;
 }>('becomeLoggedIn');
-export const actionEnterStudyLoading = createAction('enterStudyLoading');
-export const actionStudyLoadQuestion = createAction<APIQuestion>('studyLoadQuestion');
-export const actionStudyAllowGrading = createAction('studyAllowGrading');
-export const actionStudyBeginGrading = createAction('studyBeginGrading');
-export const actionStudyGradeHearing = createAction<{
-  readonly heard: APIGrade;
-}>('studyGradeHearing');
-export const actionStudyGradeUnderstanding = createAction<{
-  readonly understood: APIGrade;
-}>('studyGradeUnderstanding');
-export const actionStudyToggleAtomGrade = createAction<string>('studyToggleAtomGrade');
-export const actionStudyLoadingNext = createAction('studyLoadingNext');
+export const actionEnterStudy = createAction('enterStudy');
 
 const rootReducer = createReducer<RootState>(initialState, (builder) => {
   builder
@@ -252,26 +144,8 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
         status: state.status,
       };
     })
-    .addCase(actionEnterStudyLoading, (state, _action) => {
+    .addCase(actionEnterStudy, (state, _action) => {
       if (state.type !== 'loggedIn') {
-        return state;
-      }
-      return {
-        type: 'loggedIn',
-        sess: {
-          ...state.sess,
-          page: {
-            type: 'studyLoading',
-          },
-        },
-        status: state.status,
-      };
-    })
-    .addCase(actionStudyLoadQuestion, (state, action) => {
-      if (state.type !== 'loggedIn') {
-        return state;
-      }
-      if (!((state.sess.page.type === 'study') || (state.sess.page.type === 'studyLoading'))) {
         return state;
       }
       return {
@@ -280,157 +154,27 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
           ...state.sess,
           page: {
             type: 'study',
-            question: action.payload,
-            stage: 'listening',
-            grades: {
-              heard: null,
-              understood: null,
-              atomsFailed: [],
+            studyState: studyReducer(undefined, {type: 'init'}), // I think this action could be anything
+          },
+        },
+        status: state.status,
+      };
+    })
+    .addDefaultCase((state, action) => {
+      if ((state.type == 'loggedIn') && (state.sess.page.type == 'study')) {
+        return {
+          ...state,
+          sess: {
+            ...state.sess,
+            page: {
+              type: 'study',
+              studyState: studyReducer(state.sess.page.studyState, action),
             },
           },
-        },
-        status: state.status,
-      };
-    })
-    .addCase(actionStudyAllowGrading, (state) => {
-      if (state.type !== 'loggedIn') {
+        };
+      } else {
         return state;
       }
-      if (state.sess.page.type !== 'study') {
-        return state;
-      }
-      if (state.sess.page.stage !== 'listening') {
-        return state;
-      }
-      return {
-        type: 'loggedIn',
-        sess: {
-          ...state.sess,
-          page: {
-            ...state.sess.page,
-            stage: 'grading_allowed',
-          },
-        },
-        status: state.status,
-      };
-    })
-    .addCase(actionStudyBeginGrading, (state) => {
-      if (state.type !== 'loggedIn') {
-        return state;
-      }
-      if (state.sess.page.type !== 'study') {
-        return state;
-      }
-      if (state.sess.page.stage !== 'grading_allowed') {
-        return state;
-      }
-      return {
-        type: 'loggedIn',
-        sess: {
-          ...state.sess,
-          page: {
-            ...state.sess.page,
-            stage: 'grading_hearing',
-          },
-        },
-        status: state.status,
-      };
-    })
-    .addCase(actionStudyGradeHearing, (state, action) => {
-      if (state.type !== 'loggedIn') {
-        return state;
-      }
-      if (state.sess.page.type !== 'study') {
-        return state;
-      }
-      if (state.sess.page.stage !== 'grading_hearing') {
-        return state;
-      }
-      return {
-        type: 'loggedIn',
-        sess: {
-          ...state.sess,
-          page: {
-            ...state.sess.page,
-            stage: 'grading_understanding',
-            grades: {
-              ...state.sess.page.grades,
-              heard: action.payload.heard,
-            },
-          },
-        },
-        status: state.status,
-      };
-    })
-    .addCase(actionStudyGradeUnderstanding, (state, action) => {
-      if (state.type !== 'loggedIn') {
-        return state;
-      }
-      if (state.sess.page.type !== 'study') {
-        return state;
-      }
-      if (state.sess.page.stage !== 'grading_understanding') {
-        return state;
-      }
-      return {
-        type: 'loggedIn',
-        sess: {
-          ...state.sess,
-          page: {
-            ...state.sess.page,
-            stage: 'grading_atoms',
-            grades: {
-              ...state.sess.page.grades,
-              understood: action.payload.understood,
-            },
-          },
-        },
-        status: state.status,
-      };
-    })
-    .addCase(actionStudyToggleAtomGrade, (state, action) => {
-      if (state.type !== 'loggedIn') {
-        return state;
-      }
-      if (state.sess.page.type !== 'study') {
-        return state;
-      }
-      const atomId = action.payload;
-      const atomsFailed = state.sess.page.grades.atomsFailed;
-      const newAtomsFailed = atomsFailed.includes(atomId) ? atomsFailed.filter((atom) => atom !== atomId) : [...atomsFailed, atomId];
-      return {
-        type: 'loggedIn',
-        sess: {
-          ...state.sess,
-          page: {
-            ...state.sess.page,
-            grades: {
-              ...state.sess.page.grades,
-              atomsFailed: newAtomsFailed,
-            },
-          },
-        },
-        status: state.status,
-      };
-    })
-    .addCase(actionStudyLoadingNext, (state) => {
-      if (state.type !== 'loggedIn') {
-        return state;
-      }
-      if (state.sess.page.type !== 'study') {
-        return state;
-      }
-      return {
-        type: 'loggedIn',
-        sess: {
-          ...state.sess,
-          page: {
-            ...state.sess.page,
-            stage: 'loading_next',
-          },
-        },
-        status: state.status,
-      };
     });
 });
 
