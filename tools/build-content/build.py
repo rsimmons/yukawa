@@ -46,23 +46,23 @@ def prepare_image(src_path, output_width, output_height, output_dir):
     return output_image_fn
 
 # check if we need to generate TTS audio or already have cached, using hash of specially formatted key string
-def generate_audios(plaintext, voices, output_dir):
-    audio_fns = []
-    for voice in voices:
-        audio_key = f'tts:{ELEVEN_MODEL}:{voice}:{plaintext}'
+def generate_audios(plaintext, voices_map, output_dir):
+    audio_fns = {}
+    for voice_id, voice_name in voices_map.items():
+        audio_key = f'tts:{ELEVEN_MODEL}:{voice_name}:{plaintext}'
         audio_key_hash = hashlib.md5(audio_key.encode()).hexdigest()
         audio_fn = f'tts-{audio_key_hash}.mp3'
         audio_path = f'{output_dir}/{audio_fn}'
         if not os.path.exists(audio_path):
             audio = client.generate(
                 text=plaintext,
-                voice=voice,
+                voice=voice_name,
                 model=ELEVEN_MODEL,
                 output_format='mp3_44100_192',
             )
             save(audio, audio_path)
         # print(f'Audio for "{plaintext}" voice {voice} in {audio_fn}')
-        audio_fns.append(audio_fn)
+        audio_fns[voice_id] = audio_fn
     return audio_fns
 
 def is_string_list(v):
@@ -80,11 +80,20 @@ def build(args):
         for atom_id in atom_seq:
             assert atom_id in all_atom_ids, f'unknown atom id {atom_id}'
 
-    def build_text_trans_audio(item, manifest):
+    def build_text_trans_audio(item, manifest, voice_slots):
         assert 'text' in item, 'text missing'
         assert isinstance(item['text'], str), 'text must be str'
-        assert 'trans' in item, 'trans missing'
+        assert 'trans' in item, f'trans missing'
         assert isinstance(item['trans'], str) or is_string_list(item['trans']), 'trans not str or str list'
+
+        voice_slot_index = item.get('voice', 0)
+        assert isinstance(voice_slot_index, int), 'voice must be int'
+        assert voice_slot_index >= 0, 'voice must be >= 0'
+        assert voice_slot_index < len(voice_slots), 'voice must be < voice_slots'
+        voice_options = voice_slots[voice_slot_index]['options']
+        voice_options_map = {}
+        for voice_id in voice_options:
+            voice_options_map[voice_id] = all_voices_map[voice_id]
 
         anno = parse_annotated_text(item['text'])
         plaintext = plain_text_from_annotated_text(anno)
@@ -92,15 +101,16 @@ def build(args):
         manifest['text'] = plaintext
         manifest['trans'] = [item['trans']] if isinstance(item['trans'], str) else item
         manifest['anno'] = anno
+        manifest['voice_slot_index'] = voice_slot_index
 
-        manifest['audio'] = generate_audios(plaintext, voices, args.output_media_dir)
+        manifest['audio'] = generate_audios(plaintext, voice_options_map, args.output_media_dir)
 
     # returns list of image filenames
     def build_image_pattern(image_pattern, manifest, purpose):
-        if purpose == 'pres':
+        if purpose == 'slide':
             width = VISUALS_WIDTH
             height = VISUALS_HEIGHT
-        elif purpose == 'quiz':
+        elif purpose == 'choice':
             width = VISUALS_WIDTH_HALF
             height = VISUALS_HEIGHT_HALF
         else:
@@ -126,51 +136,201 @@ def build(args):
         else:
             assert False, 'no image or images'
 
-    def build_pres(pres):
-        if pres['kind'] == 'single':
-            pres_manifest = {
-                'kind': 'single',
-                'item': {},
-            }
-            build_text_trans_audio(pres['item'], pres_manifest['item'])
+    # def build_pres(pres):
+    #     pres_manifest = {}
 
-            return pres_manifest
-        elif pres['kind'] == 'seq':
-            assert False, 'seq pres not implemented'
-        elif pres['kind'] == 'rand':
-            assert 'reps' in pres, 'rand reps missing'
-            assert isinstance(pres['reps'], int), 'rand reps must be int'
-            assert 'items' in pres, 'rand items missing'
-            assert isinstance(pres['items'], list), 'rand items must be list'
+    #     # generate voice_slots
+    #     pres_voices = pres.get('voices', None)
+    #     if isinstance(pres_voices, int):
+    #         assert pres_voices >= 1, 'pres voices must be >= 1'
+    #         voice_slots = [{'vary': False, 'options': all_voice_ids} for i in range(pres_voices)]
+    #     elif isinstance(pres_voices, list):
+    #         voice_slots = []
+    #         for v in pres_voices:
+    #             vary = v.get('vary', False)
 
-            pres_manifest = {
-                'kind': 'rand',
-                'reps': pres['reps'],
-                'items': [],
-            }
-            for item in pres['items']:
-                item_manifest = {}
+    #             # TODO: possibly restrict options by gender, etc.
+    #             options = all_voice_ids
 
-                build_text_trans_audio(item, item_manifest)
+    #             voice_slots.append({'vary': vary, 'options': options})
+    #     else:
+    #         assert pres_voices is None, f'pres voices must be list or None'
+    #         voice_slots = [{'vary': False, 'options': all_voice_ids}]
+    #     assert len(voice_slots) >= 1, 'pres voices must have at least one slot'
+    #     pres_manifest['voice_slots'] = voice_slots
 
-                build_images(item, item_manifest, 'pres')
+    #     if pres['kind'] == 'tts':
+    #         pres_manifest['kind'] = 'tts'
 
-                pres_manifest['items'].append(item_manifest)
+    #         if 'parts' in pres:
+    #             assert isinstance(pres['parts'], list), 'tts parts must be list'
 
-            return pres_manifest
-        else:
-            assert False, f'unknown kind {pres["kind"]}'
+    #             parts_manifest = []
+    #             for part in pres['parts']:
+    #                 part_manifest = {}
+    #                 build_text_trans_audio(part, part_manifest, voice_slots)
+    #                 parts_manifest.append(part_manifest)
+    #             pres_manifest['parts'] = parts_manifest
+    #         else:
+    #             part_manifest = {}
+    #             build_text_trans_audio(pres, part_manifest, voice_slots)
+    #             pres_manifest['parts'] = [part_manifest]
+    #     elif pres['kind'] == 'tts_slides':
+    #         pres_manifest['kind'] = 'tts_slides'
+
+    #         repeat = pres.get('repeat', 1)
+    #         assert isinstance(repeat, int), 'repeat must be int'
+    #         pres_manifest['repeat'] = repeat
+
+    #         assert 'parts' in pres, 'tts_slides parts missing'
+    #         assert isinstance(pres['parts'], list), 'tts_slides parts must be list'
+
+    #         pres_manifest['parts'] = []
+    #         for slide in pres['parts']:
+    #             slide_manifest = {}
+
+    #             build_text_trans_audio(slide, slide_manifest, voice_slots)
+
+    #             build_images(slide, slide_manifest, 'pres')
+
+    #             pres_manifest['parts'].append(slide_manifest)
+    #     else:
+    #         assert False, f'unknown kind {pres["kind"]}'
+
+    #     return pres_manifest
 
     def get_built_pres_atom_set(pres):
-        if pres['kind'] == 'single':
-            return get_anno_atoms_set(pres['item']['anno'])
-        elif pres['kind'] in ['rand', 'seq']:
+        if pres['kind'] in ['tts', 'tts_slides']:
             atom_set = set()
-            for item in pres['items']:
-                atom_set.update(get_anno_atoms_set(item['anno']))
+            for part in pres['parts']:
+                atom_set.update(get_anno_atoms_set(part['anno']))
             return atom_set
         else:
             assert False, f'unknown kind {pres["kind"]}'
+
+    # def build_prompt(prompt):
+    #     def build_choice(choice, correct):
+    #         choice_manifest = {}
+
+    #         build_images(choice, choice_manifest, 'choice')
+
+    #         if not correct:
+    #             if 'fail_atoms' in choice:
+    #                 validate_atom_seq(choice['fail_atoms'])
+    #             choice_manifest['fail_atoms'] = choice['fail_atoms'] if 'fail_atoms' in choice else []
+
+    #         return choice_manifest
+
+    #     prompt_manifest = {}
+
+    #     if prompt['kind'] == 'qmci':
+    #         prompt_manifest['kind'] = 'qmci'
+
+    #         gate = prompt.get('gate', False)
+    #         assert isinstance(gate, bool), 'gate must be bool'
+    #         prompt_manifest['gate'] = gate
+
+    #         tested_atoms = prompt.get('tested_atoms', [])
+    #         assert isinstance(tested_atoms, list), 'tested_atoms must be list'
+    #         assert len(tested_atoms) >= 1, 'tested_atoms must have at least one item'
+    #         validate_atom_seq(tested_atoms)
+    #         prompt_manifest['tested_atoms'] = tested_atoms
+
+    #         assert 'correct' in prompt, 'prompt choices correct missing'
+    #         assert 'incorrect' in prompt, 'prompt choices incorrect missing'
+
+    #         prompt_manifest['correct'] = []
+    #         prompt_manifest['incorrect'] = []
+
+    #         for choice in prompt['correct']:
+    #             prompt_manifest['correct'].append(build_choice(choice, True))
+    #         for choice in prompt['incorrect']:
+    #             prompt_manifest['incorrect'].append(build_choice(choice, False))
+
+    #         assert len(prompt_manifest['correct']) >= 1, 'quiz choices correct must have at least one item'
+
+    #         incorrect_image_count = 0
+    #         for choice in prompt_manifest['incorrect']:
+    #             incorrect_image_count += len(choice['images'])
+    #         assert incorrect_image_count >= 3, 'quiz choices incorrect must have at least three images'
+    #     else:
+    #         assert False, f'unknown kind {prompt["kind"]}'
+
+    #     return prompt_manifest
+
+    def build_section(section, voice_slots):
+        if section['kind'] == 'tts_slides':
+            repeat = section.get('repeat', 1)
+            assert isinstance(repeat, int), 'repeat must be int'
+            assert 'slides' in section, 'tts_slides slides missing'
+            assert isinstance(section['slides'], list), 'tts_slides slides must be list'
+
+            section_manifest = {
+                'kind': 'tts_slides',
+                'repeat': repeat,
+                'slides': [],
+            }
+
+            for slide in section['slides']:
+                slide_manifest = {}
+                build_text_trans_audio(slide, slide_manifest, voice_slots)
+                build_images(slide, slide_manifest, 'slide')
+                section_manifest['slides'].append(slide_manifest)
+
+            return section_manifest
+        elif section['kind'] == 'qmti':
+            def build_choice(choice, correct):
+                choice_manifest = {}
+
+                build_images(choice, choice_manifest, 'choice')
+
+                if not correct:
+                    if 'fail_atoms' in choice:
+                        validate_atom_seq(choice['fail_atoms'])
+                    choice_manifest['fail_atoms'] = choice['fail_atoms'] if 'fail_atoms' in choice else []
+
+                return choice_manifest
+
+            section_manifest = {
+                'kind': 'qmti',
+            }
+
+            build_text_trans_audio(section, section_manifest, voice_slots)
+
+            on_fail = section.get('on_fail', 'report')
+            assert on_fail in ['report', 'restart'], f'unknown on_fail {on_fail}'
+            section_manifest['on_fail'] = on_fail
+
+            tested_atoms = section.get('tested_atoms', [])
+            assert isinstance(tested_atoms, list), 'tested_atoms must be list'
+            if on_fail == 'report':
+                assert len(tested_atoms) >= 1, 'tested_atoms must have at least one item'
+            validate_atom_seq(tested_atoms)
+            section_manifest['tested_atoms'] = tested_atoms
+
+            assert 'correct' in section, 'qmti choices correct missing'
+            assert isinstance(section['correct'], list), 'qmti choices correct must be list'
+            assert 'incorrect' in section, 'qmti choices incorrect missing'
+            assert isinstance(section['incorrect'], list), 'qmti choices incorrect must be list'
+
+            section_manifest['correct'] = []
+            section_manifest['incorrect'] = []
+
+            for choice in section['correct']:
+                section_manifest['correct'].append(build_choice(choice, True))
+            for choice in section['incorrect']:
+                section_manifest['incorrect'].append(build_choice(choice, False))
+
+            assert len(section_manifest['correct']) >= 1, 'quiz choices correct must have at least one item'
+
+            incorrect_image_count = 0
+            for choice in section_manifest['incorrect']:
+                incorrect_image_count += len(choice['images'])
+            assert incorrect_image_count >= 3, 'quiz choices incorrect must have at least three images'
+
+            return section_manifest
+        else:
+            assert False, f'unknown section kind {section["kind"]}'
 
     manifest = {}
 
@@ -197,84 +357,87 @@ def build(args):
         }
         manifest['atoms'].append(atom_manifest)
 
-    voices = args.voices.split('|')
+    all_voice_ids = []
+    all_voices_map = {}
+    for (i, vn) in enumerate(args.voices.split('|')):
+        vid = f'v{i}'
+        all_voices_map[vid] = vn
+        all_voice_ids.append(vid)
 
-    with open(f'{args.meta_dir}/content.yaml') as f:
-        source_content = yaml.safe_load(f)
+    with open(f'{args.meta_dir}/activities.yaml') as f:
+        source_activities = yaml.safe_load(f)
 
-    manifest['lessons'] = []
-    manifest['quizzes'] = []
-    for piece in source_content:
-        if piece['kind'] == 'lesson':
-            assert 'intro_atoms' in piece, 'lesson intro_atoms missing'
-            validate_atom_seq(piece['intro_atoms'])
-            assert len(piece['intro_atoms']) >= 1, 'lesson intro_atoms must have at least one item'
-            if 'ignore_atoms' in piece:
-                validate_atom_seq(piece['ignore_atoms'])
-            assert 'pres' in piece, 'lesson pres missing'
+    activity_manifests = []
+    for activity in source_activities:
+        activity_manifest = {}
 
-            piece_manifest = {
-                'intro_atoms': piece['intro_atoms'],
-                'ignore_atoms': piece['ignore_atoms'] if 'ignore_atoms' in piece else [],
-            }
+        intro_atoms = activity.get('intro_atoms', [])
+        validate_atom_seq(intro_atoms)
+        activity_manifest['intro_atoms'] = intro_atoms
 
-            piece_manifest['pres'] = build_pres(piece['pres'])
+        # generate voice_slots
+        activity_voices = activity.get('voices', None)
+        if isinstance(activity_voices, int):
+            assert activity_voices >= 1, 'activity voices must be >= 1'
+            voice_slots = [{'vary': False, 'options': all_voice_ids} for i in range(activity_voices)]
+        elif isinstance(activity_voices, list):
+            voice_slots = []
+            for v in activity_voices:
+                vary = v.get('vary', False)
 
-            pres_atoms_set = get_built_pres_atom_set(piece_manifest['pres'])
-            validate_atom_seq(pres_atoms_set)
-            intro_atoms_set = set(piece['intro_atoms'])
-            ignore_atoms_set = set(piece.get('ignore_atoms', []))
-            assert intro_atoms_set.issubset(pres_atoms_set), 'lesson intro_atoms not all in pres'
-            assert ignore_atoms_set.issubset(pres_atoms_set), 'lesson ignore_atoms not all in pres'
-            dep_atoms = sorted(list(pres_atoms_set - intro_atoms_set - ignore_atoms_set))
-            piece_manifest['dep_atoms'] = dep_atoms
+                # TODO: possibly restrict options by gender, etc.
+                options = all_voice_ids
 
-            manifest['lessons'].append(piece_manifest)
-        elif piece['kind'] == 'quiz':
-            def build_choice(choice, correct):
-                choice_manifest = {}
-
-                build_images(choice, choice_manifest, 'quiz')
-
-                if not correct:
-                    if 'fail_atoms' in choice:
-                        validate_atom_seq(choice['fail_atoms'])
-                    choice_manifest['fail_atoms'] = choice['fail_atoms'] if 'fail_atoms' in choice else []
-
-                return choice_manifest
-
-            assert 'target_atoms' in piece, 'quiz target_atoms missing'
-            assert 'pres' in piece, 'quiz pres missing'
-            assert 'choices' in piece, 'quiz choices missing'
-
-            quiz_manifest = {}
-
-            validate_atom_seq(piece['target_atoms'])
-            quiz_manifest['target_atoms'] = piece['target_atoms']
-
-            quiz_manifest['pres'] = build_pres(piece['pres'])
-
-            pres_atoms_set = get_built_pres_atom_set(quiz_manifest['pres'])
-            validate_atom_seq(pres_atoms_set)
-            assert set(piece['target_atoms']).issubset(pres_atoms_set), 'quiz target_atoms not all in pres'
-            dep_atoms = sorted(list(pres_atoms_set - set(piece['target_atoms'])))
-            quiz_manifest['dep_atoms'] = dep_atoms
-
-            assert 'correct' in piece['choices'], 'quiz choices correct missing'
-            assert 'incorrect' in piece['choices'], 'quiz choices incorrect missing'
-            quiz_manifest['choices'] = {'correct': [], 'incorrect': []}
-
-            for choice in piece['choices']['correct']:
-                quiz_manifest['choices']['correct'].append(build_choice(choice, True))
-            for choice in piece['choices']['incorrect']:
-                quiz_manifest['choices']['incorrect'].append(build_choice(choice, False))
-
-            assert len(piece['choices']['correct']) >= 1, 'quiz choices correct must have at least one item'
-            assert len(piece['choices']['incorrect']) >= 3, 'quiz choices incorrect must have at least three items'
-
-            manifest['quizzes'].append(quiz_manifest)
+                voice_slots.append({'vary': vary, 'options': options})
         else:
-            print(f'unknown kind {piece["kind"]}')
+            assert activity_voices is None, f'activity voices must be list or None'
+            voice_slots = [{'vary': False, 'options': all_voice_ids}]
+        assert len(voice_slots) >= 1, 'activity voices must have at least one slot'
+        activity_manifest['voice_slots'] = voice_slots
+
+        assert 'sections' in activity, 'activity section missing'
+        assert isinstance(activity['sections'], list), 'activity sections must be list'
+
+        activity_manifest['sections'] = []
+        for section in activity['sections']:
+            section_manifest = build_section(section, voice_slots)
+            activity_manifest['sections'].append(section_manifest)
+
+        # compute some derived atom lists
+        presented_atoms_set = set()
+        tested_atoms_set = set()
+        for section in activity_manifest['sections']:
+            if section['kind'] == 'tts_slides':
+                for slide in section['slides']:
+                    presented_atoms_set.update(get_anno_atoms_set(slide['anno']))
+            elif section['kind'] == 'qmti':
+                presented_atoms_set.update(section['tested_atoms'])
+                tested_atoms_set.update(section['tested_atoms'])
+        validate_atom_seq(list(presented_atoms_set)) # sanity check
+
+        activity_manifest['tested_atoms'] = sorted(list(tested_atoms_set - set(intro_atoms)))
+
+        assert tested_atoms_set.issubset(presented_atoms_set), 'tested atoms not all presented?'
+        activity_manifest['req_atoms'] = sorted(list(presented_atoms_set - set(intro_atoms)))
+
+        activity_manifests.append(activity_manifest)
+
+    manifest['activities'] = activity_manifests
+
+    with open(f'{args.meta_dir}/order.yaml') as f:
+        source_order = yaml.safe_load(f)
+    intro_order = []
+    for item in source_order:
+        if isinstance(item, str):
+            assert item in all_atom_ids, f'order.yaml unknown atom id {item}'
+            intro_order.append([item])
+        elif isinstance(item, list):
+            validate_atom_seq(item)
+            intro_order.append(sorted(item))
+        else:
+            assert False, f'order.yaml unknown item type {item}'
+
+    manifest['intro_order'] = intro_order
 
     with open(f'{args.meta_dir}/build.json', 'w') as f:
         f.write(json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False))

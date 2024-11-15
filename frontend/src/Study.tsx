@@ -1,11 +1,11 @@
 import { useSelector } from "react-redux";
 import { RootState } from "./reducers";
 import { useAppDispatch } from "./store";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useEffectOnce, useRAF } from "./util";
-import { actionStudyPresItemFinished, PreloadMap, StudyState, thunkLessonCompleted, thunkQuizAnswered, thunkStudyInit } from "./studyReducer";
+import { AtomReports, PreloadMap, StudyState, thunkStudyFinishedSection, thunkStudyInit } from "./studyReducer";
 import './Study.css';
-import { APIActivityPresItem } from "./api";
+import { APIActivitySectionQMTI, APIActivitySectionTTSSlides, APIActivityTTSSlide } from "./api";
 
 /*
 function AtomPopup(props: {atomId: string, meaning: string | null, notes: string | null}) {
@@ -114,7 +114,7 @@ function StudyButton(props: {text: string, shortcut?: string, onClick: () => voi
 */
 
 const AUDIO_PADDING = 1.0;
-function PresItem(props: {item: APIActivityPresItem, preloadMap: PreloadMap, finished: () => void}) {
+function AudioPlayer(props: {audioFn: string, preloadMap: PreloadMap, onFinished: () => void}) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const playedAudio = useRef(false);
   const audioEndTime = useRef<number | null>(null);
@@ -136,7 +136,7 @@ function PresItem(props: {item: APIActivityPresItem, preloadMap: PreloadMap, fin
       } else {
         if (elapsedTime > (audioEndTime.current + AUDIO_PADDING)) {
           if (!notifiedFinished.current) {
-            props.finished();
+            props.onFinished();
             notifiedFinished.current = true;
           }
         }
@@ -145,14 +145,94 @@ function PresItem(props: {item: APIActivityPresItem, preloadMap: PreloadMap, fin
   });
 
   return (
+    <audio src={props.preloadMap[props.audioFn]} autoPlay={false} ref={audioRef} />
+  );
+}
+
+/*
+function PresItem(props: {item: APIActivityPresItem, preloadMap: PreloadMap, finished: () => void}) {
+  return (
     <div>
       {props.item.imageFn && (
         <img src={props.preloadMap[props.item.imageFn]} />
       )}
-      <audio src={props.preloadMap[props.item.audioFn!]} autoPlay={false} ref={audioRef} />
-      {/* <div>{props.item.text}</div> */}
+      <AudioPlayer audioFn={props.item.audioFn!} preloadMap={props.preloadMap} onFinished={props.finished} />
+      <div>{props.item.text}</div>
     </div>
   );
+}
+*/
+
+function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: PreloadMap, onFinished: () => void}) {
+  return (
+    <div>
+      <img src={props.preloadMap[props.slide.imageFn]} />
+      <AudioPlayer audioFn={props.slide.audioFn} preloadMap={props.preloadMap} onFinished={props.onFinished} />
+    </div>
+  );
+}
+
+function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadMap: PreloadMap, onFinished: (atomReports: AtomReports) => void}) {
+  const [slideIndex, setSlideIndex] = useState(0);
+
+  return (
+    <div>
+      <SectionTTSSlide
+        key={slideIndex}
+        slide={props.section.slides[slideIndex]}
+        preloadMap={props.preloadMap}
+        onFinished={() => {
+          if (slideIndex === (props.section.slides.length-1)) {
+            props.onFinished({
+              atomsIntroduced: [],
+              atomsExposed: [],
+              atomsForgot: [],
+              atomsPassed: [],
+              atomsFailed: [],
+            });
+          } else {
+            setSlideIndex(slideIndex + 1);
+          }
+        }}
+      />
+    </div>
+  )
+}
+
+function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: PreloadMap, onFinished: (atomReports: AtomReports) => void}) {
+  const handleAudioFinished = () => {
+    // TODO: do nothing for now
+  };
+
+  return (
+    <div>
+      <AudioPlayer audioFn={props.section.audioFn} preloadMap={props.preloadMap} onFinished={handleAudioFinished} />
+      <div>
+        {props.section.choices.map((choice) => {
+          const handleClick = () => {
+            let atomsPassed: ReadonlyArray<string>;
+            let atomsFailed: ReadonlyArray<string>;
+            if (choice.correct) {
+              atomsPassed = props.section.testedAtoms;
+              atomsFailed = [];
+            } else {
+              atomsPassed = [];
+              const extraFailed = choice.failAtoms ? choice.failAtoms : [];
+              atomsFailed = [...props.section.testedAtoms, ...extraFailed];
+            }
+            props.onFinished({
+              atomsIntroduced: [],
+              atomsExposed: [],
+              atomsForgot: [],
+              atomsPassed,
+              atomsFailed,
+            });
+          };
+          return <img key={choice.imageFn} src={props.preloadMap[choice.imageFn]} onClick={handleClick} />
+        })}
+      </div>
+    </div>
+  )
 }
 
 export default function Study() {
@@ -250,11 +330,42 @@ export default function Study() {
 
   return (
     <div>
-      {(studyState.preloadedActivity ? (
+      {(studyState.activityState ? (
         <div>{(() => {
-          const preAct = studyState.preloadedActivity;
-          const presIdx = preAct.state.presIndex;
-          const presItem = preAct.activity.pres.items[presIdx];
+          const activityState = studyState.activityState;
+          const sectionIndex = activityState.sectionIndex
+          const section = activityState.activity.sections[sectionIndex];
+
+          const handleFinished = (atomReports: AtomReports) => {
+            dispatch(thunkStudyFinishedSection(atomReports));
+          }
+
+          switch (section.kind) {
+            case 'tts_slides':
+              return (
+                <SectionTTSSlides
+                  key={sectionIndex}
+                  section={section}
+                  preloadMap={activityState.preloadMap}
+                  onFinished={handleFinished}
+                />
+              );
+
+            case 'qmti':
+              return (
+                <SectionQMTI
+                  key={sectionIndex}
+                  section={section}
+                  preloadMap={activityState.preloadMap}
+                  onFinished={handleFinished}
+                />
+              );
+
+            default:
+              throw new Error('invalid section kind');
+          }
+
+          /*
 
           const handleContinueLesson = () => {
             dispatch(thunkLessonCompleted());
@@ -299,6 +410,8 @@ export default function Study() {
               })()}
             </div>
           );
+
+          */
         })()}</div>
       ) : (
         <div>Loading...</div>

@@ -88,55 +88,92 @@ export interface APIActivityPresItem {
   readonly imageFn?: string;
 }
 
-export interface APIActivityPres {
-  readonly items: ReadonlyArray<APIActivityPresItem>;
+export interface APIActivityPresAudioPart {
+  readonly text: string;
+  readonly trans: ReadonlyArray<string>;
+  readonly anno: APIAnno;
+  readonly audioFn: string;
 }
 
-export interface APIQuizChoice {
+export interface APIActivityPresSlidePart {
+  readonly text: string;
+  readonly trans: ReadonlyArray<string>;
+  readonly anno: APIAnno;
+  readonly audioFn: string;
+  readonly imageFn: string;
+}
+
+export type APIActivityPres = {
+  readonly kind: 'tts';
+  readonly parts: ReadonlyArray<APIActivityPresAudioPart>;
+} | {
+  readonly kind: 'tts_slides';
+  readonly parts: ReadonlyArray<APIActivityPresSlidePart>;
+}
+
+export interface APIQuestionChoice {
   readonly correct: boolean;
   readonly imageFn: string;
   readonly failAtoms?: ReadonlyArray<string>;
 }
 
-export type APIActivity =
-  {
-    readonly kind: 'lesson';
-    readonly introAtoms: ReadonlyArray<string>;
-    readonly pres: APIActivityPres;
-  } | {
-    readonly kind: 'quiz';
-    readonly targetAtoms: ReadonlyArray<string>;
-    readonly pres: APIActivityPres;
-    readonly choices: ReadonlyArray<APIQuizChoice>;
-  };
-
-const mapActivityPres = (pres: any): APIActivityPres => {
-  return {
-    items: pres.items.map((item: any) => ({
-      text: item.text,
-      trans: item.trans,
-      anno: item.anno,
-      audioFn: item.audio_fn,
-      imageFn: item.image_fn,
-    })),
-  };
+export interface APIActivityTTSSlide {
+  readonly text: string;
+  readonly trans: ReadonlyArray<string>;
+  readonly anno: APIAnno;
+  readonly audioFn: string;
+  readonly imageFn: string;
 }
 
-const mapActivity = (activity: any): APIActivity => {
-  switch (activity.kind) {
-    case 'lesson':
+export type APIActivitySectionTTSSlides = {
+  readonly kind: 'tts_slides';
+  readonly slides: ReadonlyArray<APIActivityTTSSlide>;
+}
+
+export type APIActivitySectionQMTI = {
+  readonly kind: 'qmti';
+  readonly testedAtoms: ReadonlyArray<string>;
+  readonly onFail: 'report' | 'restart';
+  readonly text: string;
+  readonly trans: ReadonlyArray<string>;
+  readonly anno: APIAnno;
+  readonly audioFn: string;
+  readonly choices: ReadonlyArray<APIQuestionChoice>;
+}
+
+export type APIActivitySection = APIActivitySectionTTSSlides | APIActivitySectionQMTI;
+
+export interface APIActivity {
+  readonly introAtoms: ReadonlyArray<string>;
+  readonly reqAtoms: ReadonlyArray<string>;
+  readonly testedAtoms: ReadonlyArray<string>;
+  readonly sections: ReadonlyArray<APIActivitySection>;
+}
+
+const mapActivitySection = (section: any): APIActivitySection => {
+  switch (section.kind) {
+    case 'tts_slides':
       return {
-        kind: 'lesson',
-        introAtoms: activity.intro_atoms,
-        pres: mapActivityPres(activity.pres),
+        kind: 'tts_slides',
+        slides: section.slides.map((slide: any) => ({
+          text: slide.text,
+          trans: slide.trans,
+          anno: slide.anno,
+          audioFn: slide.audio_fn,
+          imageFn: slide.image_fn,
+        })),
       };
 
-    case 'quiz':
+    case 'qmti':
       return {
-        kind: 'quiz',
-        targetAtoms: activity.target_atoms,
-        pres: mapActivityPres(activity.pres),
-        choices: activity.choices.map((choice: any) => ({
+        kind: 'qmti',
+        testedAtoms: section.tested_atoms,
+        onFail: section.on_fail,
+        text: section.text,
+        trans: section.trans,
+        anno: section.anno,
+        audioFn: section.audio_fn,
+        choices: section.choices.map((choice: any) => ({
           correct: choice.correct,
           imageFn: choice.image_fn,
           failAtoms: choice.fail_atoms,
@@ -144,8 +181,17 @@ const mapActivity = (activity: any): APIActivity => {
       };
 
     default:
-      throw new APIError('unknown activity kind');
+      throw new APIError('invalid section kind');
   }
+}
+
+const mapActivity = (activity: any): APIActivity => {
+  return {
+    introAtoms: activity.intro_atoms,
+    reqAtoms: activity.req_atoms,
+    testedAtoms: activity.tested_atoms,
+    sections: activity.sections.map((section: any) => mapActivitySection(section)),
+  };
 };
 
 export interface APIPickActivityResponse {
@@ -156,6 +202,8 @@ export interface APIPickActivityResponse {
 
 export const apiPickActivity = async (sessionToken: string): Promise<APIPickActivityResponse> => {
   const resp = await post('/pick_activity', {'lang': 'es'}, sessionToken);
+
+  console.log('picked activity', resp.activity)
 
   return {
     mediaUrlPrefix: resp.media_url_prefix,
@@ -173,6 +221,7 @@ export interface APIReportedResult {
 }
 
 export const apiReportResult = async (sessionToken: string, lang: string, result: APIReportedResult): Promise<void> => {
+  console.log('reporting result', result);
   await post('/report_result', {
     lang,
     result: {

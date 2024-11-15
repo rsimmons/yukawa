@@ -33,79 +33,198 @@ def init_srs_data():
         'atom': {},
     }
 
-def expand_pres_item(item):
-    result = {
-        'text': item['text'],
-        'trans': item['trans'],
-        'anno': item['anno'],
-    }
-    if 'audio' in item:
-        result['audio_fn'] = random.choice(item['audio'])
-    if 'images' in item:
-        result['image_fn'] = random.choice(item['images'])
-    return result
+# def expand_pres(pres):
+#     if pres['kind'] in ['tts', 'tts_slides']:
+#         chosen_voice_slots = []
+#         for slot in pres['voice_slots']:
+#             if slot['vary']:
+#                 chosen_voice_slots.append(slot)
+#             else:
+#                 chosen_voice = random.choice(slot['options'])
+#                 chosen_voice_slots.append({
+#                     'vary': False,
+#                     'voice': chosen_voice,
+#                 })
 
-def expand_pres(pres):
-    if pres['kind'] == 'single':
-        return {
-            'items': [expand_pres_item(pres['item'])],
-        }
-    elif pres['kind'] == 'rand':
-        expanded_items = []
-        for i in range(pres['reps']):
-            for item in pres['items']:
-                expanded_items.append(expand_pres_item(item))
+#         if pres['kind'] in ['tts', 'tts_slides']:
+#             expanded_pres = {
+#                 'kind': pres['kind'],
+#                 'parts': [],
+#             }
 
-        return {
-            'items': expanded_items,
-        }
-    else:
-        assert False, 'unknown pres kind'
+#             for part in pres['parts']:
+#                 expanded_part = {
+#                     'text': part['text'],
+#                     'trans': part['trans'],
+#                     'anno': part['anno'],
+#                 }
 
-def expand_quiz_choices(choices):
+#                 chosen_slot = chosen_voice_slots[part['voice_slot_index']]
+#                 if chosen_slot['vary']:
+#                     voice = random.choice(chosen_slot['options'])
+#                 else:
+#                     voice = chosen_slot['voice']
+
+#                 expanded_part['audio_fn'] = part['audio'][voice]
+#                 if pres['kind'] == 'tts_slides':
+#                     expanded_part['image_fn'] = random.choice(part['images'])
+
+#                 expanded_pres['parts'].append(expanded_part)
+
+#             return expanded_pres
+#         else:
+#             assert False, 'unknown pres kind'
+#     else:
+#         assert False, 'unknown pres kind'
+
+# def expand_prompt(prompt):
+#     expanded_prompt = {
+#         'kind': prompt['kind'],
+#         'tested_atoms': prompt['tested_atoms'],
+#         'gate': prompt['gate'],
+#     }
+
+#     picked_choices = []
+
+#     correct_choices = []
+#     for correct in prompt['correct']:
+#         assert 'images' in correct
+#         correct_choices.append({
+#             'correct': True,
+#             'image_fn': random.choice(correct['images']),
+#         })
+#     picked_choices.extend(random.sample(correct_choices, 1))
+
+#     incorrect_choices = []
+#     while len(incorrect_choices) < 3:
+#         for incorrect in prompt['incorrect']:
+#             assert 'images' in incorrect
+#             incorrect_choices.append({
+#                 'correct': False,
+#                 'image_fn': random.choice(incorrect['images']), # TODO: should avoid duplicates
+#                 'fail_atoms': incorrect['fail_atoms'],
+#             })
+#     picked_choices.extend(random.sample(incorrect_choices, 3))
+
+#     random.shuffle(picked_choices)
+
+#     expanded_prompt['choices'] = picked_choices
+
+#     return expanded_prompt
+
+def weighted_random_sample(weighted_choices, n):
+    assert n <= len(weighted_choices)
+    remaining_choices = list(weighted_choices)
     picked_choices = []
-
-    correct_choices = []
-    for correct in choices['correct']:
-        assert 'images' in correct
-        correct_choices.append({
-            'correct': True,
-            'image_fn': random.choice(correct['images']),
-        })
-    picked_choices.extend(random.sample(correct_choices, 1))
-
-    incorrect_choices = []
-    for incorrect in choices['incorrect']:
-        assert 'images' in incorrect
-        incorrect_choices.append({
-            'correct': False,
-            'image_fn': random.choice(incorrect['images']),
-            'fail_atoms': incorrect['fail_atoms'],
-        })
-    picked_choices.extend(random.sample(incorrect_choices, 3))
-
-    random.shuffle(picked_choices)
-
+    for i in range(n):
+        total_weight = sum(weight for (weight, choice) in remaining_choices)
+        r = random.random() * total_weight
+        for j, (weight, choice) in enumerate(remaining_choices):
+            if r < weight:
+                picked_choices.append(choice)
+                remaining_choices.pop(j)
+                break
+            r -= weight
+        else:
+            assert False, 'should not get here'
     return picked_choices
 
-def expand_tagged_activity(activity):
-    if activity['kind'] == 'lesson':
-        lesson = activity['lesson']
-        return {
-            'kind': 'lesson',
-            'intro_atoms': lesson['intro_atoms'],
-            'pres': expand_pres(lesson['pres']),
+def expand_section(section, chosen_voice_slots):
+    def choose_voice(slot_index):
+        chosen_slot = chosen_voice_slots[slot_index]
+        if chosen_slot['vary']:
+            return random.choice(chosen_slot['options'])
+        else:
+            return chosen_slot['voice']
+
+    if section['kind'] == 'tts_slides':
+        expanded_section = {
+            'kind': section['kind'],
+            'slides': [],
         }
-    elif activity['kind'] == 'quiz':
-        quiz = activity['quiz']
-        return {
-            'kind': 'quiz',
-            'target_atoms': quiz['target_atoms'],
-            'pres': expand_pres(quiz['pres']),
-            'choices': expand_quiz_choices(quiz['choices']),
+
+        for repeat in range(section['repeat']):
+            for slide in section['slides']:
+                expanded_slide = {
+                    'text': slide['text'],
+                    'trans': slide['trans'],
+                    'anno': slide['anno'],
+                }
+
+                voice = choose_voice(slide['voice_slot_index'])
+
+                expanded_slide['audio_fn'] = slide['audio'][voice]
+                expanded_slide['image_fn'] = random.choice(slide['images'])
+
+                expanded_section['slides'].append(expanded_slide)
+
+        return expanded_section
+    elif section['kind'] == 'qmti':
+        expanded_section = {
+            'kind': section['kind'],
+            'text': section['text'],
+            'trans': section['trans'],
+            'anno': section['anno'],
+            'on_fail': section['on_fail'],
+            'tested_atoms': section['tested_atoms'],
         }
+
+        voice = choose_voice(section['voice_slot_index'])
+        expanded_section['audio_fn'] = section['audio'][voice]
+
+        picked_choices = []
+
+        weighted_correct_choices = []
+        for correct in section['correct']:
+            assert 'images' in correct
+            assert len(correct['images']) > 0
+            weight = 1.0 / len(correct['images'])
+            for image_fn in correct['images']:
+                weighted_correct_choices.append((weight, {
+                    'correct': True,
+                    'image_fn': image_fn,
+                }))
+        picked_choices.extend(weighted_random_sample(weighted_correct_choices, 1))
+
+        weighted_incorrect_choices = []
+        for incorrect in section['incorrect']:
+            assert 'images' in incorrect
+            assert len(incorrect['images']) > 0
+            weight = 1.0 / len(incorrect['images'])
+            for image_fn in incorrect['images']:
+                weighted_incorrect_choices.append((weight, {
+                    'correct': False,
+                    'image_fn': image_fn,
+                    'fail_atoms': incorrect['fail_atoms'],
+                }))
+        picked_choices.extend(weighted_random_sample(weighted_incorrect_choices, 3))
+
+        random.shuffle(picked_choices)
+
+        expanded_section['choices'] = picked_choices
+
+        return expanded_section
     else:
-        assert False, 'unknown activity kind'
+        assert False, 'unknown section kind'
+
+def expand_activity(activity):
+    chosen_voice_slots = []
+    for slot in activity['voice_slots']:
+        if slot['vary']:
+            chosen_voice_slots.append(slot)
+        else:
+            chosen_voice = random.choice(slot['options'])
+            chosen_voice_slots.append({
+                'vary': False,
+                'voice': chosen_voice,
+            })
+
+    return {
+        'intro_atoms': activity['intro_atoms'],
+        'req_atoms': activity['req_atoms'],
+        'tested_atoms': activity['tested_atoms'],
+        'sections': [expand_section(s, chosen_voice_slots) for s in activity['sections']],
+    }
 
 def atom_dueness(interval, elapsed):
     assert interval is not None
@@ -145,33 +264,31 @@ def pick_activity(lang, srs_data, t):
         srs_debug(' ', atom_id, dueness, 'elapsed', elapsed, 'interval', atom_data['iv'])
 
     scored_review_activities = [] # {'activity': ..., 'score': ...}, higher score better
-    for quiz in CONTENT[lang]['quizzes']:
-        # check if this quiz targets any atoms that are due
-        target_due_count = len([target_atom for target_atom in quiz['target_atoms'] if atom_due.get(target_atom, 'untracked') == 'due'])
-        if target_due_count > 0:
-            # check if all atoms needed by this quiz are known or due for review
-            if all(atom_due.get(atom_id, 'untracked') in ['due', 'not_due'] for atom_id in quiz['dep_atoms']):
+    for activity in CONTENT[lang]['activities']:
+        # check if this activity tests any atoms that are due
+        tested_due_count = len([ta for ta in activity['tested_atoms'] if atom_due.get(ta, 'untracked') == 'due'])
+        if tested_due_count > 0:
+            # check if all atoms needed by this activity are known or due for review
+            if all(atom_due.get(atom_id, 'untracked') in ['due', 'not_due'] for atom_id in activity['req_atoms']):
                 scored_review_activities.append({
-                    'activity': {
-                        'kind': 'quiz',
-                        'quiz': quiz,
-                    },
-                    'score': target_due_count,
+                    'activity': activity,
+                    'score': tested_due_count,
                 })
 
     next_intro_activity = None
-    for lesson in CONTENT[lang]['lessons']:
-        # check if this lesson introduces any atoms that are not yet known or overdue
-        if any(atom_due.get(target_atom, 'untracked') in ['untracked', 'overdue'] for target_atom in lesson['intro_atoms']):
-            # check if all atoms needed by this lesson are known
-            if all(atom_due.get(atom_id, 'untracked') in ['not_due'] for atom_id in lesson['dep_atoms']):
-                next_intro_activity = {
-                    'kind': 'lesson',
-                    'lesson': lesson,
-                }
-                break
+    for intro_atoms in CONTENT[lang]['intro_order']:
+        if any(atom_due.get(a, 'untracked') in ['untracked', 'overdue'] for a in intro_atoms):
+            # intro_atoms is the set of atoms that we should introduce next
+            intro_atoms_set = frozenset(intro_atoms)
+            intro_activities = CONTENT[lang]['activities_by_intro_atoms'].get(intro_atoms_set, [])
+
+            for activity in intro_activities:
+                # check if all atoms needed by this activity are known
+                if all(atom_due.get(atom_id, 'untracked') in ['not_due'] for atom_id in activity['req_atoms']):
+                    next_intro_activity = activity
+                    break
             else:
-                srs_debug('lesson has unmet dependencies:', ' '.join(sorted(dep_atoms)))
+                assert False, 'no intro activity found'
 
     random.shuffle(scored_review_activities)
     scored_review_activities.sort(key=lambda x: x['score'], reverse=True)
@@ -179,10 +296,10 @@ def pick_activity(lang, srs_data, t):
 
     if best_review_activity:
         srs_debug('doing review activity')
-        return expand_tagged_activity(best_review_activity)
+        return expand_activity(best_review_activity)
     elif next_intro_activity is not None:
         srs_debug('doing intro activity')
-        return expand_tagged_activity(next_intro_activity)
+        return expand_activity(next_intro_activity)
     else:
         assert False, 'no activities available'
 

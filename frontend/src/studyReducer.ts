@@ -1,5 +1,5 @@
 import { ThunkDispatch, UnknownAction, createAction, createReducer } from '@reduxjs/toolkit'
-import { APIActivity, APIActivityPres, apiPickActivity, APIPickActivityResponse, APIQuizChoice, apiReportResult } from './api';
+import { APIActivity, apiPickActivity, APIPickActivityResponse, apiReportResult } from './api';
 import { AppThunk, RootState } from './reducers';
 import { genRandomStr64 } from './util';
 
@@ -9,24 +9,42 @@ export interface PreloadMap {
   [filename: string]: string;
 }
 
-interface ActivityState {
-  readonly presIndex: number;
-  readonly everFinishedPres: boolean;
+export const mergeArraysUnique = <T>(a: ReadonlyArray<T>, b: ReadonlyArray<T>): ReadonlyArray<T> => {
+  return Array.from(new Set([...a, ...b]));
+}
+
+export const combineAtomReports = (prev: AtomReports, next: AtomReports): AtomReports => {
+  return {
+    atomsIntroduced: mergeArraysUnique(prev.atomsIntroduced, next.atomsIntroduced),
+    atomsExposed: mergeArraysUnique(prev.atomsExposed, next.atomsExposed),
+    atomsForgot: mergeArraysUnique(prev.atomsForgot, next.atomsForgot),
+    atomsPassed: mergeArraysUnique(prev.atomsPassed, next.atomsPassed),
+    atomsFailed: mergeArraysUnique(prev.atomsFailed, next.atomsFailed),
+  };
+};
+
+export interface AtomReports {
+  readonly atomsIntroduced: ReadonlyArray<string>;
+  readonly atomsExposed: ReadonlyArray<string>;
+  readonly atomsForgot: ReadonlyArray<string>;
+  readonly atomsPassed: ReadonlyArray<string>;
+  readonly atomsFailed: ReadonlyArray<string>;
 }
 
 export interface StudyState {
   readonly loading: boolean; // true during initial or subsequent loading of next activity
-  readonly preloadedActivity: {
+  readonly activityState: {
     readonly uid: string;
     readonly activity: APIActivity;
     readonly preloadMap: PreloadMap;
-    readonly state: ActivityState;
+    readonly sectionIndex: number;
+    readonly accumAtomReports: AtomReports;
   } | undefined; // undefined before initial load
 }
 
 export const initialStudyState: StudyState = {
   loading: true,
-  preloadedActivity: undefined,
+  activityState: undefined,
 };
 
 const preloadFilename = async (filename: string, mediaUrlPrefix: string): Promise<string> => {
@@ -34,40 +52,31 @@ const preloadFilename = async (filename: string, mediaUrlPrefix: string): Promis
   return URL.createObjectURL(blob);
 }
 
-const getActivityPresMediaFilenames = (pres: APIActivityPres): ReadonlySet<string> => {
+const getActivityMediaFilenames = (activity: APIActivity): ReadonlySet<string> => {
   const filenames = new Set<string>();
 
-  for (const item of pres.items) {
-    if (item.audioFn !== undefined) {
-      filenames.add(item.audioFn);
-    }
-    if (item.imageFn !== undefined) {
-      filenames.add(item.imageFn);
+  for (const section of activity.sections) {
+    switch (section.kind) {
+      case 'tts_slides':
+        for (const slide of section.slides) {
+          filenames.add(slide.audioFn);
+          filenames.add(slide.imageFn);
+        }
+        break;
+
+      case 'qmti':
+        filenames.add(section.audioFn);
+        for (const choice of section.choices) {
+          filenames.add(choice.imageFn);
+        }
+        break;
+
+      default:
+        throw new Error('invalid section kind');
     }
   }
 
   return filenames;
-};
-
-const getActivityMediaFilenames = (activity: APIActivity): ReadonlySet<string> => {
-  switch (activity.kind) {
-    case 'lesson':
-      return getActivityPresMediaFilenames(activity.pres);
-
-    case 'quiz': {
-      const presMediaFns = getActivityPresMediaFilenames(activity.pres);
-
-      const choiceMediaFns = new Set<string>();
-      for (const choice of activity.choices) {
-        choiceMediaFns.add(choice.imageFn);
-      }
-
-      return new Set([...presMediaFns, ...choiceMediaFns]);
-    }
-
-    default:
-      throw new Error('unknown activity kind');
-  }
 };
 
 const preloadActivityMedia = async (pickActivityResp: APIPickActivityResponse, mediaUrlPrefix: string): Promise<PreloadMap> => {
@@ -103,6 +112,7 @@ export const thunkStudyInit = (): AppThunk => async (dispatch, getState) => {
   await loadActivity(dispatch, state.sess.sessionToken);
 };
 
+/*
 export const thunkLessonCompleted = (): AppThunk => async (dispatch, getState) => {
   const state = getState();
   if (state.type !== 'loggedIn') {
@@ -167,12 +177,67 @@ export const thunkQuizAnswered = (choice: APIQuizChoice): AppThunk => async (dis
 
   loadActivity(dispatch, state.sess.sessionToken);
 }
+*/
 
-export const actionStudyLoadActivity = createAction<{
+export const thunkStudyFinishedSection = (atomReports: AtomReports): AppThunk => async (dispatch, getState) => {
+  const state = getState();
+  if (state.type !== 'loggedIn') {
+    throw new Error('invalid state');
+  }
+  if (state.sess.page.type !== 'study') {
+    throw new Error('invalid page');
+  }
+  if (state.sess.page.studyState.activityState === undefined) {
+    throw new Error('invalid study state');
+  }
+
+  dispatch(actionAccumAtomReports(atomReports));
+
+  const activityState = state.sess.page.studyState.activityState;
+  const activity = activityState.activity;
+  const newSectionIndex = activityState.sectionIndex + 1;
+  if (newSectionIndex >= activity.sections.length) {
+    dispatch(actionAccumAtomReports({
+      atomsIntroduced: activity.introAtoms,
+      atomsExposed: [],
+      atomsForgot: [],
+      atomsPassed: [],
+      atomsFailed: [],
+    }));
+
+    const updatedState = getState();
+    if (updatedState.type !== 'loggedIn') {
+      throw new Error('invalid state');
+    }
+    if (updatedState.sess.page.type !== 'study') {
+      throw new Error('invalid page');
+    }
+    if (updatedState.sess.page.studyState.activityState === undefined) {
+      throw new Error('invalid study state');
+    }
+    const updatedAtomReports = updatedState.sess.page.studyState.activityState.accumAtomReports;
+
+    await apiReportResult(state.sess.sessionToken, 'es', {
+      atomsIntroduced: Array.from(updatedAtomReports.atomsIntroduced),
+      atomsExposed: Array.from(updatedAtomReports.atomsExposed),
+      atomsForgot: Array.from(updatedAtomReports.atomsForgot),
+      atomsPassed: Array.from(updatedAtomReports.atomsPassed),
+      atomsFailed: Array.from(updatedAtomReports.atomsFailed),
+    });
+
+    loadActivity(dispatch, state.sess.sessionToken);
+  } else {
+    dispatch(actionStudyNextSection());
+  }
+}
+
+const actionStudyLoadActivity = createAction<{
   readonly activity: APIActivity;
   readonly preloadMap: PreloadMap;
 }>('studyLoadActivity');
-export const actionStudyPresItemFinished = createAction('studyPresItemFinished');
+export const actionAccumAtomReports = createAction<AtomReports>('accumAtomReports');
+const actionStudyNextSection = createAction('studyNextSection');
+
 
 /*
 export const actionStudyAllowGrading = createAction('studyAllowGrading');
@@ -259,43 +324,51 @@ const studyReducer = createReducer<StudyState>(initialStudyState, (builder) => {
     .addCase(actionStudyLoadActivity, (_state, action) => {
       return {
         loading: false,
-        preloadedActivity: {
+        activityState: {
           uid: genRandomStr64(),
           activity: action.payload.activity,
           preloadMap: action.payload.preloadMap,
-          state: {
-            presIndex: 0,
-            everFinishedPres: false,
+          sectionIndex: 0,
+          accumAtomReports: {
+            atomsIntroduced: [],
+            atomsExposed: [],
+            atomsForgot: [],
+            atomsPassed: [],
+            atomsFailed: [],
           },
         },
       };
     })
-    .addCase(actionStudyPresItemFinished, (state, _action) => {
-      if (state.preloadedActivity === undefined) {
+    .addCase(actionStudyNextSection, (state, _action) => {
+      if (state.activityState === undefined) {
         return state;
       }
 
-      const activityState = state.preloadedActivity.state;
-      const items = state.preloadedActivity.activity.pres.items;
+      const activityState = state.activityState;
+      const sections = activityState.activity.sections;
 
-      let newPresIndex: number;
-      let newEverFinished: boolean;
-      if ((activityState.presIndex + 1) >= items.length) {
-        newPresIndex = activityState.presIndex;
-        newEverFinished = true;
-      } else {
-        newPresIndex = activityState.presIndex + 1;
-        newEverFinished = activityState.everFinishedPres;
+      const newSectionIndex = activityState.sectionIndex + 1;
+      if (newSectionIndex >= sections.length) {
+        throw new Error('invalid section index');
       }
 
       return {
         loading: false,
-        preloadedActivity: {
-          ...state.preloadedActivity,
-          state: {
-            presIndex: newPresIndex,
-            everFinishedPres: newEverFinished,
-          },
+        activityState: {
+          ...state.activityState,
+          sectionIndex: newSectionIndex
+        },
+      };
+    }).addCase(actionAccumAtomReports, (state, action) => {
+      if (state.activityState === undefined) {
+        return state;
+      }
+
+      return {
+        ...state,
+        activityState: {
+          ...state.activityState,
+          accumAtomReports: combineAtomReports(state.activityState.accumAtomReports, action.payload),
         },
       };
     });
