@@ -136,69 +136,6 @@ def build(args):
         else:
             assert False, 'no image or images'
 
-    # def build_pres(pres):
-    #     pres_manifest = {}
-
-    #     # generate voice_slots
-    #     pres_voices = pres.get('voices', None)
-    #     if isinstance(pres_voices, int):
-    #         assert pres_voices >= 1, 'pres voices must be >= 1'
-    #         voice_slots = [{'vary': False, 'options': all_voice_ids} for i in range(pres_voices)]
-    #     elif isinstance(pres_voices, list):
-    #         voice_slots = []
-    #         for v in pres_voices:
-    #             vary = v.get('vary', False)
-
-    #             # TODO: possibly restrict options by gender, etc.
-    #             options = all_voice_ids
-
-    #             voice_slots.append({'vary': vary, 'options': options})
-    #     else:
-    #         assert pres_voices is None, f'pres voices must be list or None'
-    #         voice_slots = [{'vary': False, 'options': all_voice_ids}]
-    #     assert len(voice_slots) >= 1, 'pres voices must have at least one slot'
-    #     pres_manifest['voice_slots'] = voice_slots
-
-    #     if pres['kind'] == 'tts':
-    #         pres_manifest['kind'] = 'tts'
-
-    #         if 'parts' in pres:
-    #             assert isinstance(pres['parts'], list), 'tts parts must be list'
-
-    #             parts_manifest = []
-    #             for part in pres['parts']:
-    #                 part_manifest = {}
-    #                 build_text_trans_audio(part, part_manifest, voice_slots)
-    #                 parts_manifest.append(part_manifest)
-    #             pres_manifest['parts'] = parts_manifest
-    #         else:
-    #             part_manifest = {}
-    #             build_text_trans_audio(pres, part_manifest, voice_slots)
-    #             pres_manifest['parts'] = [part_manifest]
-    #     elif pres['kind'] == 'tts_slides':
-    #         pres_manifest['kind'] = 'tts_slides'
-
-    #         repeat = pres.get('repeat', 1)
-    #         assert isinstance(repeat, int), 'repeat must be int'
-    #         pres_manifest['repeat'] = repeat
-
-    #         assert 'parts' in pres, 'tts_slides parts missing'
-    #         assert isinstance(pres['parts'], list), 'tts_slides parts must be list'
-
-    #         pres_manifest['parts'] = []
-    #         for slide in pres['parts']:
-    #             slide_manifest = {}
-
-    #             build_text_trans_audio(slide, slide_manifest, voice_slots)
-
-    #             build_images(slide, slide_manifest, 'pres')
-
-    #             pres_manifest['parts'].append(slide_manifest)
-    #     else:
-    #         assert False, f'unknown kind {pres["kind"]}'
-
-    #     return pres_manifest
-
     def get_built_pres_atom_set(pres):
         if pres['kind'] in ['tts', 'tts_slides']:
             atom_set = set()
@@ -207,56 +144,6 @@ def build(args):
             return atom_set
         else:
             assert False, f'unknown kind {pres["kind"]}'
-
-    # def build_prompt(prompt):
-    #     def build_choice(choice, correct):
-    #         choice_manifest = {}
-
-    #         build_images(choice, choice_manifest, 'choice')
-
-    #         if not correct:
-    #             if 'fail_atoms' in choice:
-    #                 validate_atom_seq(choice['fail_atoms'])
-    #             choice_manifest['fail_atoms'] = choice['fail_atoms'] if 'fail_atoms' in choice else []
-
-    #         return choice_manifest
-
-    #     prompt_manifest = {}
-
-    #     if prompt['kind'] == 'qmci':
-    #         prompt_manifest['kind'] = 'qmci'
-
-    #         gate = prompt.get('gate', False)
-    #         assert isinstance(gate, bool), 'gate must be bool'
-    #         prompt_manifest['gate'] = gate
-
-    #         tested_atoms = prompt.get('tested_atoms', [])
-    #         assert isinstance(tested_atoms, list), 'tested_atoms must be list'
-    #         assert len(tested_atoms) >= 1, 'tested_atoms must have at least one item'
-    #         validate_atom_seq(tested_atoms)
-    #         prompt_manifest['tested_atoms'] = tested_atoms
-
-    #         assert 'correct' in prompt, 'prompt choices correct missing'
-    #         assert 'incorrect' in prompt, 'prompt choices incorrect missing'
-
-    #         prompt_manifest['correct'] = []
-    #         prompt_manifest['incorrect'] = []
-
-    #         for choice in prompt['correct']:
-    #             prompt_manifest['correct'].append(build_choice(choice, True))
-    #         for choice in prompt['incorrect']:
-    #             prompt_manifest['incorrect'].append(build_choice(choice, False))
-
-    #         assert len(prompt_manifest['correct']) >= 1, 'quiz choices correct must have at least one item'
-
-    #         incorrect_image_count = 0
-    #         for choice in prompt_manifest['incorrect']:
-    #             incorrect_image_count += len(choice['images'])
-    #         assert incorrect_image_count >= 3, 'quiz choices incorrect must have at least three images'
-    #     else:
-    #         assert False, f'unknown kind {prompt["kind"]}'
-
-    #     return prompt_manifest
 
     def build_section(section, voice_slots):
         if section['kind'] == 'tts_slides':
