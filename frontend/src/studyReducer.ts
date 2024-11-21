@@ -31,15 +31,17 @@ export interface AtomReports {
   readonly atomsFailed: ReadonlyArray<string>;
 }
 
+export interface ActivityState {
+  readonly uid: string;
+  readonly activity: APIActivity;
+  readonly preloadMap: PreloadMap;
+  readonly sectionIndex: number;
+  readonly accumAtomReports: AtomReports;
+}
+
 export interface StudyState {
   readonly loading: boolean; // true during initial or subsequent loading of next activity
-  readonly activityState: {
-    readonly uid: string;
-    readonly activity: APIActivity;
-    readonly preloadMap: PreloadMap;
-    readonly sectionIndex: number;
-    readonly accumAtomReports: AtomReports;
-  } | undefined; // undefined before initial load
+  readonly activityState: ActivityState | undefined; // undefined before initial load
 }
 
 export const initialStudyState: StudyState = {

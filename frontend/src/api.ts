@@ -80,37 +80,6 @@ export interface APIAtomInfo {
   readonly notes: string | null;
 }
 
-export interface APIActivityPresItem {
-  readonly text: string;
-  readonly trans: ReadonlyArray<string>;
-  readonly anno: APIAnno;
-  readonly audioFn?: string;
-  readonly imageFn?: string;
-}
-
-export interface APIActivityPresAudioPart {
-  readonly text: string;
-  readonly trans: ReadonlyArray<string>;
-  readonly anno: APIAnno;
-  readonly audioFn: string;
-}
-
-export interface APIActivityPresSlidePart {
-  readonly text: string;
-  readonly trans: ReadonlyArray<string>;
-  readonly anno: APIAnno;
-  readonly audioFn: string;
-  readonly imageFn: string;
-}
-
-export type APIActivityPres = {
-  readonly kind: 'tts';
-  readonly parts: ReadonlyArray<APIActivityPresAudioPart>;
-} | {
-  readonly kind: 'tts_slides';
-  readonly parts: ReadonlyArray<APIActivityPresSlidePart>;
-}
-
 export interface APIQuestionChoice {
   readonly correct: boolean;
   readonly imageFn: string;

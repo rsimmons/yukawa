@@ -94,6 +94,7 @@ def pick_activity():
     # }
     # log_obj_json = json.dumps(log_obj)
     # print(f'pick_activity {log_obj_json}', flush=True)
+    print(f'pick_activity {activity}', flush=True)
 
     return jsonify({
         'status': 'ok',

@@ -79,8 +79,8 @@ def get_anno_atoms_set(anno):
     return atoms
 
 # returns list of image filenames
-def build_image_pattern(image_pattern, manifest, purpose):
-    if purpose == 'slide':
+def build_image_pattern(image_pattern, purpose):
+    if purpose == 'full':
         width = VISUALS_WIDTH
         height = VISUALS_HEIGHT
     elif purpose == 'choice':
@@ -95,46 +95,67 @@ def build_image_pattern(image_pattern, manifest, purpose):
         output_images.append(output_image_fn)
     return output_images
 
-def build_images(item, manifest, purpose):
+def build_images(item, purpose):
     if 'image' in item:
-        output_images = build_image_pattern(item['image'], manifest, purpose)
-        manifest['images'] = output_images
+        return build_image_pattern(item['image'], purpose)
     elif 'images' in item:
         assert is_string_list(item['images']), 'images must be list of strings'
 
-        manifest['images'] = []
+        result = []
         for source_image_pattern in item['images']:
-            output_images = build_image_pattern(source_image_pattern, manifest, purpose)
-            manifest['images'].extend(output_images)
+            output_images = build_image_pattern(source_image_pattern, purpose)
+            result.extend(output_images)
+        return result
     else:
         assert False, 'no image or images'
 
+def build_voice_slots(activity, context):
+    # generate voice_slots
+    activity_voices = activity.get('voices', None)
+    if isinstance(activity_voices, int):
+        assert activity_voices >= 1, 'activity voices must be >= 1'
+        voice_slots = [{'vary': False, 'options': context.all_voice_ids} for i in range(activity_voices)]
+    elif isinstance(activity_voices, list):
+        voice_slots = []
+        for v in activity_voices:
+            vary = v.get('vary', False)
+
+            # TODO: possibly restrict options by gender, etc.
+            options = context.all_voice_ids
+
+            voice_slots.append({'vary': vary, 'options': options})
+    else:
+        assert activity_voices is None, f'activity voices must be list or None'
+        voice_slots = [{'vary': False, 'options': context.all_voice_ids}]
+    assert len(voice_slots) >= 1, 'activity voices must have at least one slot'
+    return voice_slots
+
+def build_text_trans_audio(item, manifest, voice_slots, context):
+    assert 'text' in item, 'text missing'
+    assert isinstance(item['text'], str), 'text must be str'
+    assert 'trans' in item, f'trans missing'
+    assert isinstance(item['trans'], str) or is_string_list(item['trans']), 'trans not str or str list'
+
+    voice_slot_index = item.get('voice', 0)
+    assert isinstance(voice_slot_index, int), 'voice must be int'
+    assert voice_slot_index >= 0, 'voice must be >= 0'
+    assert voice_slot_index < len(voice_slots), 'voice must be < voice_slots'
+    voice_options = voice_slots[voice_slot_index]['options']
+    voice_options_map = {}
+    for voice_id in voice_options:
+        voice_options_map[voice_id] = context.all_voices_map[voice_id]
+
+    anno = parse_annotated_text(item['text'])
+    plaintext = plain_text_from_annotated_text(anno)
+
+    manifest['text'] = plaintext
+    manifest['trans'] = [item['trans']] if isinstance(item['trans'], str) else item
+    manifest['anno'] = anno
+    manifest['voice_slot_index'] = voice_slot_index
+
+    manifest['audio'] = generate_audios(plaintext, voice_options_map, args.output_media_dir)
+
 def build_generator_simple(activity, context):
-    def build_text_trans_audio(item, manifest, voice_slots):
-        assert 'text' in item, 'text missing'
-        assert isinstance(item['text'], str), 'text must be str'
-        assert 'trans' in item, f'trans missing'
-        assert isinstance(item['trans'], str) or is_string_list(item['trans']), 'trans not str or str list'
-
-        voice_slot_index = item.get('voice', 0)
-        assert isinstance(voice_slot_index, int), 'voice must be int'
-        assert voice_slot_index >= 0, 'voice must be >= 0'
-        assert voice_slot_index < len(voice_slots), 'voice must be < voice_slots'
-        voice_options = voice_slots[voice_slot_index]['options']
-        voice_options_map = {}
-        for voice_id in voice_options:
-            voice_options_map[voice_id] = context.all_voices_map[voice_id]
-
-        anno = parse_annotated_text(item['text'])
-        plaintext = plain_text_from_annotated_text(anno)
-
-        manifest['text'] = plaintext
-        manifest['trans'] = [item['trans']] if isinstance(item['trans'], str) else item
-        manifest['anno'] = anno
-        manifest['voice_slot_index'] = voice_slot_index
-
-        manifest['audio'] = generate_audios(plaintext, voice_options_map, args.output_media_dir)
-
     def get_built_pres_atom_set(pres):
         if pres['kind'] in ['tts', 'tts_slides']:
             atom_set = set()
@@ -159,8 +180,8 @@ def build_generator_simple(activity, context):
 
             for slide in section['slides']:
                 slide_manifest = {}
-                build_text_trans_audio(slide, slide_manifest, voice_slots)
-                build_images(slide, slide_manifest, 'slide')
+                build_text_trans_audio(slide, slide_manifest, voice_slots, context)
+                slide_manifest['images'] = build_images(slide, 'full')
                 section_manifest['slides'].append(slide_manifest)
 
             return section_manifest
@@ -168,7 +189,7 @@ def build_generator_simple(activity, context):
             def build_choice(choice, correct):
                 choice_manifest = {}
 
-                build_images(choice, choice_manifest, 'choice')
+                choice_manifest['images'] = build_images(choice, 'choice')
 
                 if not correct:
                     if 'fail_atoms' in choice:
@@ -181,7 +202,7 @@ def build_generator_simple(activity, context):
                 'kind': 'qmti',
             }
 
-            build_text_trans_audio(section, section_manifest, voice_slots)
+            build_text_trans_audio(section, section_manifest, voice_slots, context)
 
             on_fail = section.get('on_fail', 'report')
             assert on_fail in ['report', 'restart'], f'unknown on_fail {on_fail}'
@@ -218,30 +239,15 @@ def build_generator_simple(activity, context):
         else:
             assert False, f'unknown section kind {section["kind"]}'
 
-    activity_manifest = {}
+    activity_manifest = {
+        'kind': 'simple',
+    }
 
     intro_atoms = activity.get('intro_atoms', [])
     assert context.all_atom_ids.issuperset(intro_atoms), 'unknown intro_atoms'
     activity_manifest['intro_atoms'] = intro_atoms
 
-    # generate voice_slots
-    activity_voices = activity.get('voices', None)
-    if isinstance(activity_voices, int):
-        assert activity_voices >= 1, 'activity voices must be >= 1'
-        voice_slots = [{'vary': False, 'options': context.all_voice_ids} for i in range(activity_voices)]
-    elif isinstance(activity_voices, list):
-        voice_slots = []
-        for v in activity_voices:
-            vary = v.get('vary', False)
-
-            # TODO: possibly restrict options by gender, etc.
-            options = context.all_voice_ids
-
-            voice_slots.append({'vary': vary, 'options': options})
-    else:
-        assert activity_voices is None, f'activity voices must be list or None'
-        voice_slots = [{'vary': False, 'options': context.all_voice_ids}]
-    assert len(voice_slots) >= 1, 'activity voices must have at least one slot'
+    voice_slots = build_voice_slots(activity, context)
     activity_manifest['voice_slots'] = voice_slots
 
     assert 'sections' in activity, 'activity section missing'
@@ -268,6 +274,25 @@ def build_generator_simple(activity, context):
 
     assert tested_atoms_set.issubset(presented_atoms_set), 'tested atoms not all presented?'
     activity_manifest['req_atoms'] = sorted(list(presented_atoms_set - set(intro_atoms)))
+
+    return activity_manifest
+
+def build_generator_pool(activity, context):
+    activity_manifest = {
+        'kind': 'pool',
+        'provide_intros': activity.get('provide_intros', False),
+    }
+
+    voice_slots = build_voice_slots(activity, context)
+    activity_manifest['voice_slots'] = voice_slots
+
+    activity_manifest['items'] = []
+    for item in activity['items']:
+        item_manifest = {}
+        build_text_trans_audio(item, item_manifest, voice_slots, context)
+        item_manifest['images_full'] = build_images(item, 'full')
+        item_manifest['images_choice'] = build_images(item, 'choice')
+        activity_manifest['items'].append(item_manifest)
 
     return activity_manifest
 
@@ -318,6 +343,8 @@ def build():
         activity_kind = activity['kind']
         if activity_kind == 'simple':
             activity_manifests.append(build_generator_simple(activity, context))
+        elif activity_kind == 'pool':
+            activity_manifests.append(build_generator_pool(activity, context))
         else:
             assert False, f'unknown activity kind {activity_kind}'
 

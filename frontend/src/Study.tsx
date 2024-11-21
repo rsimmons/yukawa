@@ -1,9 +1,9 @@
 import { useSelector } from "react-redux";
 import { RootState } from "./reducers";
-import { useAppDispatch } from "./store";
-import { useRef, useState } from "react";
+import { AppDispatch, useAppDispatch } from "./store";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useEffectOnce, useRAF } from "./util";
-import { AtomReports, PreloadMap, StudyState, thunkStudyFinishedSection, thunkStudyInit } from "./studyReducer";
+import { ActivityState, AtomReports, PreloadMap, StudyState, thunkStudyFinishedSection, thunkStudyInit } from "./studyReducer";
 import './Study.css';
 import { APIActivitySectionQMTI, APIActivitySectionTTSSlides, APIActivityTTSSlide } from "./api";
 
@@ -149,20 +149,6 @@ function AudioPlayer(props: {audioFn: string, preloadMap: PreloadMap, onFinished
   );
 }
 
-/*
-function PresItem(props: {item: APIActivityPresItem, preloadMap: PreloadMap, finished: () => void}) {
-  return (
-    <div>
-      {props.item.imageFn && (
-        <img src={props.preloadMap[props.item.imageFn]} />
-      )}
-      <AudioPlayer audioFn={props.item.audioFn!} preloadMap={props.preloadMap} onFinished={props.finished} />
-      <div>{props.item.text}</div>
-    </div>
-  );
-}
-*/
-
 function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: PreloadMap, onFinished: () => void}) {
   return (
     <div>
@@ -235,6 +221,46 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
   )
 }
 
+function Activity(props: {activityState: ActivityState, dispatch: AppDispatch}) {
+  const activityState = props.activityState;
+  const sectionIndex = activityState.sectionIndex
+  const section = activityState.activity.sections[sectionIndex];
+
+  // scroll to top on activity start, and on section change
+  useLayoutEffect(() => {
+    document.documentElement.scrollTo({top:0, left:0, behavior: "instant"});
+  }, [sectionIndex]);
+
+  const handleFinished = (atomReports: AtomReports) => {
+    props.dispatch(thunkStudyFinishedSection(atomReports));
+  }
+
+  switch (section.kind) {
+    case 'tts_slides':
+      return (
+        <SectionTTSSlides
+          key={sectionIndex}
+          section={section}
+          preloadMap={activityState.preloadMap}
+          onFinished={handleFinished}
+        />
+      );
+
+    case 'qmti':
+      return (
+        <SectionQMTI
+          key={sectionIndex}
+          section={section}
+          preloadMap={activityState.preloadMap}
+          onFinished={handleFinished}
+        />
+      );
+
+    default:
+      throw new Error('invalid section kind');
+  }
+}
+
 export default function Study() {
   const dispatch = useAppDispatch();
 
@@ -252,166 +278,17 @@ export default function Study() {
     dispatch(thunkStudyInit());
   });
 
-  /*
-  const handleBeginGrading = () => {
-    dispatch(actionStudyBeginGrading());
-  };
-
-  const handleGradeHearing = (grade: APIGrade) => {
-    dispatch(actionStudyGradeHearing({heard: grade}));
-  };
-
-  const handleGradeUnderstanding = (grade: APIGrade) => {
-    dispatch(thunkGradeUnderstanding(grade));
-  };
-
-  const handleGradeWords = () => {
-    // TODO: get failed atoms
-    dispatch(thunkSubmitGradeAtoms());
-  };
-
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const grade_hearing_or_understanding = (grade: APIGrade) => {
-        if (page.stage === 'grading_hearing') {
-          handleGradeHearing(grade);
-        } else if (page.stage === 'grading_understanding') {
-          handleGradeUnderstanding(grade);
-        }
-      };
-
-      if (event.key === 'r') {
-        if (videoRef.current) {
-          videoRef.current.currentTime = 0;
-          videoRef.current.play();
-        }
-      } else if (event.key === ' ') {
-        if (page.stage === 'grading_allowed') {
-          handleBeginGrading();
-        } else if (page.stage === 'grading_atoms') {
-          handleGradeWords();
-        }
-      } else if (event.key === '1') {
-        grade_hearing_or_understanding('n');
-      } else if (event.key === '2') {
-        grade_hearing_or_understanding('m');
-      } else if (event.key === '3') {
-        grade_hearing_or_understanding('y');
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  });
-
-  const handleVideoTimeUpdate = () => {
-    if (videoRef.current) {
-      if (videoRef.current.currentTime > (videoRef.current.duration-1)) {
-        if (page.stage === 'listening') {
-          dispatch(actionStudyAllowGrading());
-        }
-      }
-    }
-  };
-
-  const handleVideoClick = () => {
-    if (videoRef.current) {
-      if (videoRef.current.paused) {
-        videoRef.current.play();
-      } else {
-        videoRef.current.pause();
-      }
-    }
-  };
-  */
-
   return (
     <div>
       {(studyState.activityState ? (
         <div>{(() => {
           const activityState = studyState.activityState;
-          const sectionIndex = activityState.sectionIndex
-          const section = activityState.activity.sections[sectionIndex];
 
-          const handleFinished = (atomReports: AtomReports) => {
-            dispatch(thunkStudyFinishedSection(atomReports));
-          }
-
-          switch (section.kind) {
-            case 'tts_slides':
-              return (
-                <SectionTTSSlides
-                  key={sectionIndex}
-                  section={section}
-                  preloadMap={activityState.preloadMap}
-                  onFinished={handleFinished}
-                />
-              );
-
-            case 'qmti':
-              return (
-                <SectionQMTI
-                  key={sectionIndex}
-                  section={section}
-                  preloadMap={activityState.preloadMap}
-                  onFinished={handleFinished}
-                />
-              );
-
-            default:
-              throw new Error('invalid section kind');
-          }
-
-          /*
-
-          const handleContinueLesson = () => {
-            dispatch(thunkLessonCompleted());
-          };
-
-          return (
-            <div key={preAct.uid}>
-              <PresItem
-                key={presIdx}
-                item={presItem}
-                preloadMap={preAct.preloadMap}
-                finished={() => {
-                  dispatch(actionStudyPresItemFinished());
-                }}
-              />
-              {(() => {
-                switch (preAct.activity.kind) {
-                  case 'lesson':
-                    return (
-                      <div style={{textAlign: 'center'}}>{preAct.state.everFinishedPres ? (
-                        <button onClick={handleContinueLesson}>Continue</button>
-                      ) : (
-                        <button onClick={handleContinueLesson}>Skip</button>
-                      )}</div>
-                    );
-
-                  case 'quiz':
-                    return (
-                      <div>
-                        {preAct.activity.choices.map((choice) => {
-                          const handleClick = () => {
-                            dispatch(thunkQuizAnswered(choice));
-                          };
-                          return <img key={choice.imageFn} src={preAct.preloadMap[choice.imageFn]} onClick={handleClick} />
-                        })}
-                      </div>
-                    );
-
-                  default:
-                    throw new Error('invalid activity kind');
-                }
-              })()}
-            </div>
-          );
-
-          */
+          return <Activity
+            key={activityState.uid}
+            activityState={activityState}
+            dispatch={dispatch}
+          />
         })()}</div>
       ) : (
         <div>Loading...</div>

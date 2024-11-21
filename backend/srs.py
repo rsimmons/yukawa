@@ -9,6 +9,7 @@ import random
 
 from content import load_prepare_content
 from config import Config
+import gen
 
 INIT_INTERVAL_AFTER_SUCCESS = 60
 INIT_INTERVAL_AFTER_FAILURE = 10
@@ -31,120 +32,6 @@ def srs_debug(*args):
 def init_srs_data():
     return {
         'atom': {},
-    }
-
-def weighted_random_sample(weighted_choices, n):
-    assert n <= len(weighted_choices)
-    remaining_choices = list(weighted_choices)
-    picked_choices = []
-    for i in range(n):
-        total_weight = sum(weight for (weight, choice) in remaining_choices)
-        r = random.random() * total_weight
-        for j, (weight, choice) in enumerate(remaining_choices):
-            if r < weight:
-                picked_choices.append(choice)
-                remaining_choices.pop(j)
-                break
-            r -= weight
-        else:
-            assert False, 'should not get here'
-    return picked_choices
-
-def expand_section(section, chosen_voice_slots):
-    def choose_voice(slot_index):
-        chosen_slot = chosen_voice_slots[slot_index]
-        if chosen_slot['vary']:
-            return random.choice(chosen_slot['options'])
-        else:
-            return chosen_slot['voice']
-
-    if section['kind'] == 'tts_slides':
-        expanded_section = {
-            'kind': section['kind'],
-            'slides': [],
-        }
-
-        for repeat in range(section['repeat']):
-            for slide in section['slides']:
-                expanded_slide = {
-                    'text': slide['text'],
-                    'trans': slide['trans'],
-                    'anno': slide['anno'],
-                }
-
-                voice = choose_voice(slide['voice_slot_index'])
-
-                expanded_slide['audio_fn'] = slide['audio'][voice]
-                expanded_slide['image_fn'] = random.choice(slide['images'])
-
-                expanded_section['slides'].append(expanded_slide)
-
-        return expanded_section
-    elif section['kind'] == 'qmti':
-        expanded_section = {
-            'kind': section['kind'],
-            'text': section['text'],
-            'trans': section['trans'],
-            'anno': section['anno'],
-            'on_fail': section['on_fail'],
-            'tested_atoms': section['tested_atoms'],
-        }
-
-        voice = choose_voice(section['voice_slot_index'])
-        expanded_section['audio_fn'] = section['audio'][voice]
-
-        picked_choices = []
-
-        weighted_correct_choices = []
-        for correct in section['correct']:
-            assert 'images' in correct
-            assert len(correct['images']) > 0
-            weight = 1.0 / len(correct['images'])
-            for image_fn in correct['images']:
-                weighted_correct_choices.append((weight, {
-                    'correct': True,
-                    'image_fn': image_fn,
-                }))
-        picked_choices.extend(weighted_random_sample(weighted_correct_choices, 1))
-
-        weighted_incorrect_choices = []
-        for incorrect in section['incorrect']:
-            assert 'images' in incorrect
-            assert len(incorrect['images']) > 0
-            weight = 1.0 / len(incorrect['images'])
-            for image_fn in incorrect['images']:
-                weighted_incorrect_choices.append((weight, {
-                    'correct': False,
-                    'image_fn': image_fn,
-                    'fail_atoms': incorrect['fail_atoms'],
-                }))
-        picked_choices.extend(weighted_random_sample(weighted_incorrect_choices, 3))
-
-        random.shuffle(picked_choices)
-
-        expanded_section['choices'] = picked_choices
-
-        return expanded_section
-    else:
-        assert False, 'unknown section kind'
-
-def expand_activity(activity):
-    chosen_voice_slots = []
-    for slot in activity['voice_slots']:
-        if slot['vary']:
-            chosen_voice_slots.append(slot)
-        else:
-            chosen_voice = random.choice(slot['options'])
-            chosen_voice_slots.append({
-                'vary': False,
-                'voice': chosen_voice,
-            })
-
-    return {
-        'intro_atoms': activity['intro_atoms'],
-        'req_atoms': activity['req_atoms'],
-        'tested_atoms': activity['tested_atoms'],
-        'sections': [expand_section(s, chosen_voice_slots) for s in activity['sections']],
     }
 
 def atom_dueness(interval, elapsed):
@@ -185,27 +72,21 @@ def pick_activity(lang, srs_data, t):
         srs_debug(' ', atom_id, dueness, 'elapsed', elapsed, 'interval', atom_data['iv'])
 
     scored_review_activities = [] # {'activity': ..., 'score': ...}, higher score better
-    for activity in CONTENT[lang]['activities']:
-        # check if this activity tests any atoms that are due
-        tested_due_count = len([ta for ta in activity['tested_atoms'] if atom_due.get(ta, 'untracked') == 'due'])
-        if tested_due_count > 0:
-            # check if all atoms needed by this activity are known or due for review
-            if all(atom_due.get(atom_id, 'untracked') in ['due', 'not_due'] for atom_id in activity['req_atoms']):
-                scored_review_activities.append({
-                    'activity': activity,
-                    'score': tested_due_count,
-                })
+    for generator in CONTENT[lang]['generator_objects']:
+        generated_activity_score = generator.generate_review_activity(atom_due)
+        if generated_activity_score is not None:
+            activity, score = generated_activity_score
+            scored_review_activities.append({
+                'activity': activity,
+                'score': score,
+            })
 
     next_intro_activity = None
     for intro_atoms in CONTENT[lang]['intro_order']:
         if any(atom_due.get(a, 'untracked') in ['untracked', 'overdue'] for a in intro_atoms):
-            # intro_atoms is the set of atoms that we should introduce next
-            intro_atoms_set = frozenset(intro_atoms)
-            intro_activities = CONTENT[lang]['activities_by_intro_atoms'].get(intro_atoms_set, [])
-
-            for activity in intro_activities:
-                # check if all atoms needed by this activity are known
-                if all(atom_due.get(atom_id, 'untracked') in ['not_due'] for atom_id in activity['req_atoms']):
+            for generator in CONTENT[lang]['generator_objects']:
+                activity = generator.generate_intro_activity(intro_atoms, atom_due)
+                if activity is not None:
                     next_intro_activity = activity
                     break
             else:
@@ -217,10 +98,10 @@ def pick_activity(lang, srs_data, t):
 
     if best_review_activity:
         srs_debug('doing review activity')
-        return expand_activity(best_review_activity)
+        return best_review_activity
     elif next_intro_activity is not None:
         srs_debug('doing intro activity')
-        return expand_activity(next_intro_activity)
+        return next_intro_activity
     else:
         assert False, 'no activities available'
 
