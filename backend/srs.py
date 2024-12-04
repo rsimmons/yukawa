@@ -91,6 +91,8 @@ def pick_activity(lang, srs_data, t):
                     break
             else:
                 assert False, 'no intro activity found'
+        if next_intro_activity is not None:
+            break
 
     random.shuffle(scored_review_activities)
     scored_review_activities.sort(key=lambda x: x['score'], reverse=True)
