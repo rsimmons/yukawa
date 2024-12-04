@@ -1,9 +1,37 @@
 .Login {
-  margin: 0 auto;
   max-width: 600px;
-  padding: 0.5em;
+  margin: 0 auto;
+  padding: 0 0.5em;
+  text-align: center;
 }
 
+.Login-header {
+  margin: 1em 0 2em 0;
+}
+
+.Login-header-name {
+  font-size: 24px;
+}
+
+.Login-header-proto {
+  font-size: 16px;
+  font-style: italic;
+  color: #888;
+}
+
+.Login-title {
+  font-weight: bold;
+  font-size: 24px;
+  margin-bottom: 0.5em;
+}
+
+.Login-email, .Login-button {
+  width: 280px;
+}
 .Login-email {
-  width: 15em;
+  margin-bottom: 0.5em;
+}
+
+.Login-message {
+  margin-top: 0.5em;
 }

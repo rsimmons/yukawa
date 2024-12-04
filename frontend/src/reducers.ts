@@ -115,6 +115,7 @@ export const actionBecomeLoggedIn = createAction<{
   readonly email: string;
 }>('becomeLoggedIn');
 export const actionEnterStudy = createAction('enterStudy');
+export const actionExitStudy = createAction('exitStudy');
 
 const rootReducer = createReducer<RootState>(initialState, (builder) => {
   builder
@@ -155,6 +156,21 @@ const rootReducer = createReducer<RootState>(initialState, (builder) => {
           page: {
             type: 'study',
             studyState: studyReducer(undefined, {type: 'init'}), // I think this action could be anything
+          },
+        },
+        status: state.status,
+      };
+    })
+    .addCase(actionExitStudy, (state, _action) => {
+      if (state.type !== 'loggedIn') {
+        return state;
+      }
+      return {
+        type: 'loggedIn',
+        sess: {
+          ...state.sess,
+          page: {
+            type: 'home',
           },
         },
         status: state.status,

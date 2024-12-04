@@ -1,5 +1,21 @@
 .Home {
-  margin: 0 auto;
-  max-width: 600px;
-  padding: 0.5em;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+.Home-header {
+  margin: 0.75em;
+}
+
+.Home-study-button {
+  width: 5em;
+  font-size: 24px;
+  margin-top: 2em;
+}
+
+.Home-footer {
+  margin-top: auto;
+  margin-bottom: 1em;
 }

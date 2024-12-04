@@ -1,7 +1,6 @@
 import { useSelector } from "react-redux";
 import { RootState, SessionState, actionEnterStudy, thunkLogOut } from "./reducers";
 import { useAppDispatch } from "./store";
-import Header from "./Header";
 import './Home.css';
 
 export default function Home() {
@@ -18,15 +17,19 @@ export default function Home() {
     dispatch(actionEnterStudy());
   };
 
-  const handleLogOut = () => {
+  const handleLogOut = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
     dispatch(thunkLogOut());
   };
 
   return (
     <div className="Home">
-      <Header />
-      <div>Greetings! You are logged in as {sess.email}</div>
-      <p>You may <button onClick={handleClickStudy}>Study</button> or <button onClick={handleLogOut}>Log Out</button></p>
+      <div className="Home-header">Yukawa</div>
+      <div><button className="StandardButton Home-study-button" onClick={handleClickStudy}>Study</button></div>
+      <div className="Home-footer">
+        <div>{sess.email}</div>
+        <div><a href="#" className="ActionLink" onClick={handleLogOut}>Log Out</a></div>
+      </div>
     </div>
   );
 }

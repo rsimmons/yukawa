@@ -6,4 +6,33 @@ html, body {
 body {
   font-size: 18px;
   font-family: sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.StandardButton {
+  border-radius: 5px;
+  background: #3a3a3a;
+  font-family: inherit;
+  font-size: 18px;
+  padding: 0.5em 0.75em;
+  cursor: pointer;
+  color: white;
+  border: none;
+ }
+
+ .StandardButton:hover {
+  background: #5a5a5a;
+ }
+
+.StandardInput {
+  font-size: 18px;
+  box-sizing: border-box;
+  border-radius: 5px;
+  border: 1px solid black;
+  padding: 0.5em 0.75em;
+}
+
+.ActionLink {
+  color: inherit;
 }

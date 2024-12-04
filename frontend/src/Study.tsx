@@ -1,11 +1,12 @@
 import { useSelector } from "react-redux";
-import { RootState } from "./reducers";
+import { actionExitStudy, RootState } from "./reducers";
 import { AppDispatch, useAppDispatch } from "./store";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useEffectOnce, useRAF } from "./util";
 import { ActivityState, AtomReports, PreloadMap, StudyState, thunkStudyFinishedSection, thunkStudyInit } from "./studyReducer";
 import './Study.css';
 import { APIActivitySectionQMTI, APIActivitySectionTTSSlides, APIActivityTTSSlide } from "./api";
+import backArrow from './back-arrow.svg';
 
 /*
 function AtomPopup(props: {atomId: string, meaning: string | null, notes: string | null}) {
@@ -152,7 +153,7 @@ function AudioPlayer(props: {audioFn: string, preloadMap: PreloadMap, onFinished
 function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: PreloadMap, onFinished: () => void}) {
   return (
     <div>
-      <img src={props.preloadMap[props.slide.imageFn]} />
+      <img className="SectionTTSSlide-img" src={props.preloadMap[props.slide.imageFn]} />
       <AudioPlayer audioFn={props.slide.audioFn} preloadMap={props.preloadMap} onFinished={props.onFinished} />
     </div>
   );
@@ -162,26 +163,24 @@ function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadM
   const [slideIndex, setSlideIndex] = useState(0);
 
   return (
-    <div>
-      <SectionTTSSlide
-        key={slideIndex}
-        slide={props.section.slides[slideIndex]}
-        preloadMap={props.preloadMap}
-        onFinished={() => {
-          if (slideIndex === (props.section.slides.length-1)) {
-            props.onFinished({
-              atomsIntroduced: [],
-              atomsExposed: [],
-              atomsForgot: [],
-              atomsPassed: [],
-              atomsFailed: [],
-            });
-          } else {
-            setSlideIndex(slideIndex + 1);
-          }
-        }}
-      />
-    </div>
+    <SectionTTSSlide
+      key={slideIndex}
+      slide={props.section.slides[slideIndex]}
+      preloadMap={props.preloadMap}
+      onFinished={() => {
+        if (slideIndex === (props.section.slides.length-1)) {
+          props.onFinished({
+            atomsIntroduced: [],
+            atomsExposed: [],
+            atomsForgot: [],
+            atomsPassed: [],
+            atomsFailed: [],
+          });
+        } else {
+          setSlideIndex(slideIndex + 1);
+        }
+      }}
+    />
   )
 }
 
@@ -191,9 +190,9 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
   };
 
   return (
-    <div>
+    <div className="SectionQMTI">
       <AudioPlayer audioFn={props.section.audioFn} preloadMap={props.preloadMap} onFinished={handleAudioFinished} />
-      <div>
+      <div className="SectionQMTI-choices">
         {props.section.choices.map((choice) => {
           const handleClick = () => {
             let atomsPassed: ReadonlyArray<string>;
@@ -214,7 +213,7 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
               atomsFailed,
             });
           };
-          return <img key={choice.imageFn} src={props.preloadMap[choice.imageFn]} onClick={handleClick} />
+          return <img className="SectionQMTI-choice-image" key={choice.imageFn} src={props.preloadMap[choice.imageFn]} onClick={handleClick} />
         })}
       </div>
     </div>
@@ -278,10 +277,20 @@ export default function Study() {
     dispatch(thunkStudyInit());
   });
 
+  const onClickBack = () => {
+    dispatch(actionExitStudy());
+  };
+
   return (
-    <div>
-      {(studyState.activityState ? (
-        <div>{(() => {
+    <div className="Study">
+      <div className="Study-header">
+        <div className="Study-header-back"><img src={backArrow} onClick={onClickBack} width="20px" height="20px" /></div>
+        <div>Yukawa</div>
+      </div>
+      {(() => {
+        if (studyState.activityState === undefined) {
+          return <div>Loading...</div>;
+        } else {
           const activityState = studyState.activityState;
 
           return <Activity
@@ -289,13 +298,10 @@ export default function Study() {
             activityState={activityState}
             dispatch={dispatch}
           />
-        })()}</div>
-      ) : (
-        <div>Loading...</div>
-      ))}
+        }
+      })()}
     </div>
-  );
-
+  )
   /*
   const question = page.question;
   return (

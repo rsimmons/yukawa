@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { thunkLogIn } from "./reducers";
 import { useAppDispatch } from "./store";
-import Header from "./Header";
 import './Login.css';
 
 type LoginFormState = 'entering' | 'waiting' | 'invalid_email' | 'email_sent';
@@ -32,29 +31,34 @@ export default function Login() {
 
   return (
     <div className="Login">
-      <Header />
-      {(formState === 'email_sent') ? (
-        <div>We emailed you at {email}</div>
-      ) : (
-        <>
-          <form onSubmit={handleSubmit}>
-            If you enter <input className="Login-email" type="text" name="email" onChange={handleEmailChange} value={email} placeholder="your email address" /><br/>
-            and press <input type="submit" value="Send" style={{margin: '4px 0'}} /><br />
-            we'll send you a link to log in.
-          </form>
-          <div>
-            {(() => {
-              if (formState === 'invalid_email') {
-                return <span>Invalid email</span>;
-              } else if (formState === 'waiting') {
-                return <span>...</span>;
-              } else {
-                return <span></span>;
-              }
-            })()}
-          </div>
-        </>
-      )}
+      <div className="Login-header">
+        <div className="Login-header-name">Yukawa</div>
+        <div className="Login-header-proto">prototype·Spanish</div>
+      </div>
+      <div className="Login-main">
+        <div className="Login-title">Log In or Sign Up</div>
+        {(formState === 'email_sent') ? (
+          <div>A login link has been sent to {email}</div>
+        ) : (
+          <>
+            <form onSubmit={handleSubmit}>
+              <div><input className="StandardInput Login-email" type="text" name="email" onChange={handleEmailChange} value={email} placeholder="Email address" /></div>
+              <div><input className="StandardButton Login-button" type="submit" value="Send Link" /></div>
+            </form>
+            <div className="Login-message">
+              {(() => {
+                if (formState === 'invalid_email') {
+                  return <span>Invalid email</span>;
+                } else if (formState === 'waiting') {
+                  return <span>...</span>;
+                } else {
+                  return <span></span>;
+                }
+              })()}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
