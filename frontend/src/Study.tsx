@@ -1,12 +1,14 @@
 import { useSelector } from "react-redux";
 import { actionExitStudy, RootState } from "./reducers";
 import { AppDispatch, useAppDispatch } from "./store";
-import { useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useEffectOnce, useRAF } from "./util";
 import { ActivityState, AtomReports, PreloadMap, StudyState, thunkStudyFinishedSection, thunkStudyInit } from "./studyReducer";
 import './Study.css';
 import { APIActivitySectionQMTI, APIActivitySectionTTSSlides, APIActivityTTSSlide } from "./api";
-import backArrow from './back-arrow.svg';
+import backArrowSvg from './back-arrow.svg';
+import audioSvg from './audio.svg';
+import replaySvg from './replay.svg';
 
 /*
 function AtomPopup(props: {atomId: string, meaning: string | null, notes: string | null}) {
@@ -114,28 +116,42 @@ function StudyButton(props: {text: string, shortcut?: string, onClick: () => voi
 }
 */
 
-const AUDIO_PADDING = 1.0;
-function AudioPlayer(props: {audioFn: string, preloadMap: PreloadMap, onFinished: () => void}) {
+const AUDIO_PADDING = 0.5;
+const AudioPlayback = forwardRef((props: {audioUrl: string, onFinished: () => void}, ref) => {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const playedAudio = useRef(false);
-  const audioEndTime = useRef<number | null>(null);
+  const playbackStartTime = useRef<number>(Date.now() / 1000);
+  const audioStarted = useRef(false);
   const notifiedFinished = useRef(false);
+  const progressBarRef = useRef<HTMLDivElement>(null);
 
-  useRAF((elapsedTime) => {
-    if (!playedAudio.current && (elapsedTime > AUDIO_PADDING)) {
+  useImperativeHandle(ref, () => ({
+    restart() {
       if (audioRef.current) {
-        audioRef.current.play();
-        playedAudio.current = true;
+        audioRef.current.currentTime = 0;
+        audioStarted.current = false;
+        playbackStartTime.current = Date.now() / 1000;
+        notifiedFinished.current = false;
       }
-    } else if (playedAudio.current) {
-      if (audioEndTime.current === null) {
-        if (audioRef.current) {
-          if (audioRef.current.ended) {
-            audioEndTime.current = elapsedTime;
-          }
+    },
+  }));
+
+  useRAF(() => {
+    const elapsed = (Date.now() / 1000) - playbackStartTime.current;
+
+    if (audioRef.current) {
+      if (!audioStarted.current && (elapsed > AUDIO_PADDING)) {
+        audioRef.current.play();
+        audioStarted.current = true;
+      }
+
+      const dur = audioRef.current.duration;
+      if (!Number.isNaN(dur) && (playbackStartTime.current !== null)) {
+        const progress = Math.min(elapsed / (dur + 2*AUDIO_PADDING), 1);
+        if (progressBarRef.current) {
+          progressBarRef.current.style.width = `${progress*100}%`;
         }
-      } else {
-        if (elapsedTime > (audioEndTime.current + AUDIO_PADDING)) {
+
+        if (progress >= 1) {
           if (!notifiedFinished.current) {
             props.onFinished();
             notifiedFinished.current = true;
@@ -146,15 +162,64 @@ function AudioPlayer(props: {audioFn: string, preloadMap: PreloadMap, onFinished
   });
 
   return (
-    <audio src={props.preloadMap[props.audioFn]} autoPlay={false} ref={audioRef} />
+    <>
+      <audio src={props.audioUrl} autoPlay={false} ref={audioRef} />
+      <div className="ProgressBar" ref={progressBarRef}></div>
+    </>
+  );
+});
+
+function ImageAudioPlayer(props: {imageFn: string, audioFn: string, onFinished: () => void}) {
+  const [showReplay, setShowReplay] = useState(false);
+
+  const handleClickReplay = () => {
+    setShowReplay(false);
+    props.onFinished();
+  };
+
+  const handleAudioFinished = () => {
+    setShowReplay(true);
+    props.onFinished();
+  };
+
+  return (
+    <div>
+      <img className="ImageAudioPlayer-img" src={props.imageFn} />
+      <AudioPlayback audioUrl={props.audioFn} onFinished={handleAudioFinished} />
+    </div>
+  );
+}
+
+function AudioPlayer(props: {audioUrl: string, onFinished: () => void}) {
+  const audioPlaybackRef = useRef<{restart: () => void} | null>(null);
+  const [showReplay, setShowReplay] = useState(false);
+
+  const handleClickReplay = () => {
+    setShowReplay(false);
+    audioPlaybackRef.current?.restart();
+  };
+
+  const handleAudioFinished = () => {
+    setShowReplay(true);
+    props.onFinished();
+  };
+
+  return (
+    <div>
+      { showReplay ? (
+        <img className="AudioPlayer-replay-svg" src={replaySvg} onClick={handleClickReplay} />
+      ) : (
+        <img className="AudioPlayer-audio-svg" src={audioSvg} />
+      )}
+      <AudioPlayback audioUrl={props.audioUrl} onFinished={handleAudioFinished} ref={audioPlaybackRef} />
+    </div>
   );
 }
 
 function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: PreloadMap, onFinished: () => void}) {
   return (
     <div>
-      <img className="SectionTTSSlide-img" src={props.preloadMap[props.slide.imageFn]} />
-      <AudioPlayer audioFn={props.slide.audioFn} preloadMap={props.preloadMap} onFinished={props.onFinished} />
+      <ImageAudioPlayer imageFn={props.preloadMap[props.slide.imageFn]} audioFn={props.preloadMap[props.slide.audioFn]} onFinished={props.onFinished} />
     </div>
   );
 }
@@ -191,7 +256,7 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
 
   return (
     <div className="SectionQMTI">
-      <AudioPlayer audioFn={props.section.audioFn} preloadMap={props.preloadMap} onFinished={handleAudioFinished} />
+      <AudioPlayer audioUrl={props.preloadMap[props.section.audioFn]} onFinished={handleAudioFinished} />
       <div className="SectionQMTI-choices">
         {props.section.choices.map((choice) => {
           const handleClick = () => {
@@ -284,8 +349,7 @@ export default function Study() {
   return (
     <div className="Study">
       <div className="Study-header">
-        <div className="Study-header-back"><img src={backArrow} onClick={onClickBack} width="20px" height="20px" /></div>
-        <div>Yukawa</div>
+        <div className="Study-header-back"><img src={backArrowSvg} onClick={onClickBack} width="20px" height="20px" /></div>
       </div>
       {(() => {
         if (studyState.activityState === undefined) {

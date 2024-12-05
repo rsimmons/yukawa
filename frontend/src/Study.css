@@ -18,10 +18,12 @@
 }
 .Study-header-back img {
   cursor: pointer;
+  display: block;
 }
 
-.SectionTTSSlide-img {
+.ImageAudioPlayer-img {
   width: 100%;
+  display: block;
 }
 
 .SectionQMTI {
@@ -41,6 +43,17 @@
 .SectionQMTI-choice-image {
   width: 100%;
   border-radius: 0.5em;
+  display: block;
+}
+
+.AudioPlayer-audio-svg, .AudioPlayer-replay-svg {
+  height: 4em;
+}
+
+.ProgressBar {
+  height: 2px;
+  background-color: blue;
+  width: 30%;
 }
 
 /*
