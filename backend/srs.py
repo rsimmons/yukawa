@@ -34,6 +34,35 @@ def init_srs_data():
         'atom': {},
     }
 
+def add_atoms_info(lang, activity):
+    # def add_anno_atoms_info(anno):
+    #     for span in anno:
+    #         if 'a' in span:
+    #             atom_id = span['a']
+    #             if atom_id not in atom_info:
+    #                 content_atom_info = CONTENT[lang]['base']['atom_map'][atom_id]
+    #                 atoms_info[atom_id] = {
+    #                     'meaning': content_atom_info.get('meaning'),
+    #                     'notes': content_atom_info.get('notes'),
+    #                 }
+
+    atoms_info = {}
+
+    all_atoms = set()
+    all_atoms.update(activity['intro_atoms'])
+    all_atoms.update(activity['req_atoms'])
+    all_atoms.update(activity['tested_atoms'])
+    for atom_id in all_atoms:
+        content_atom_info = CONTENT[lang]['atom_map'][atom_id]
+        atoms_info[atom_id] = {
+            'meaning': content_atom_info.get('meaning'),
+            'notes': content_atom_info.get('notes'),
+        }
+
+    activity['atoms_info'] = atoms_info
+
+    return activity
+
 def atom_dueness(interval, elapsed):
     assert interval is not None
     assert elapsed is not None
@@ -100,10 +129,10 @@ def pick_activity(lang, srs_data, t):
 
     if best_review_activity:
         srs_debug('doing review activity')
-        return best_review_activity
+        return add_atoms_info(lang, best_review_activity)
     elif next_intro_activity is not None:
         srs_debug('doing intro activity')
-        return next_intro_activity
+        return add_atoms_info(lang, next_intro_activity)
     else:
         assert False, 'no activities available'
 

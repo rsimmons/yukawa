@@ -1,16 +1,15 @@
 import { useSelector } from "react-redux";
 import { actionExitStudy, RootState } from "./reducers";
 import { AppDispatch, useAppDispatch } from "./store";
-import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useEffectOnce, useRAF } from "./util";
 import { ActivityState, AtomReports, PreloadMap, StudyState, thunkStudyFinishedSection, thunkStudyInit } from "./studyReducer";
 import './Study.css';
-import { APIActivitySectionQMTI, APIActivitySectionTTSSlides, APIActivityTTSSlide } from "./api";
+import { APIActivitySectionQMTI, APIActivitySectionTTSSlides, APIActivityTTSSlide, APIAnno, APIAtomsInfo } from "./api";
 import backArrowSvg from './back-arrow.svg';
 import audioSvg from './audio.svg';
 import replaySvg from './replay.svg';
 
-/*
 function AtomPopup(props: {atomId: string, meaning: string | null, notes: string | null}) {
   return (
     <div className="Study-atom-popup">
@@ -24,7 +23,7 @@ function AtomPopup(props: {atomId: string, meaning: string | null, notes: string
   );
 }
 
-function TranscriptionSpans(props: {spans: APIQuestion['spans'], atomInfo: APIQuestion['atomInfo'], atomsFailed: ReadonlyArray<string>, dispatch: AppDispatch}) {
+function Transcription(props: {anno: APIAnno, atomsInfo: APIAtomsInfo, atomsFailed: ReadonlyArray<string>}) {
   const [openSpan, setOpenSpan] = useState<{readonly idx: number, readonly fromClick: boolean} | null>(null);
 
   const handleSpanMouseEnter = (i: number) => {
@@ -55,9 +54,9 @@ function TranscriptionSpans(props: {spans: APIQuestion['spans'], atomInfo: APIQu
         return {idx: i, fromClick: true};
       }
     });
-    const span = props.spans[i];
+    const span = props.anno[i];
     if (span.a) {
-      props.dispatch(actionStudyToggleAtomGrade(span.a));
+      // props.dispatch(actionStudyToggleAtomGrade(span.a));
     }
   };
 
@@ -76,7 +75,7 @@ function TranscriptionSpans(props: {spans: APIQuestion['spans'], atomInfo: APIQu
 
   return (
     <span>
-      {props.spans.map((span, i) => {
+      {props.anno.map((span, i) => {
         if (span.a) {
           const classList: string[] = [];
           if (openSpan && (openSpan.idx === i)) {
@@ -95,7 +94,7 @@ function TranscriptionSpans(props: {spans: APIQuestion['spans'], atomInfo: APIQu
                 onClick={() => handleSpanClick(i)}
               >{span.t}</span>
               {openSpan && (openSpan.idx === i) && (
-                <AtomPopup atomId={span.a} meaning={props.atomInfo[span.a]!.meaning} notes={props.atomInfo[span.a]!.notes} />
+                <AtomPopup atomId={span.a} meaning={props.atomsInfo[span.a]!.meaning} notes={props.atomsInfo[span.a]!.notes} />
               )}
             </span>
           );
@@ -107,6 +106,7 @@ function TranscriptionSpans(props: {spans: APIQuestion['spans'], atomInfo: APIQu
   );
 }
 
+/*
 function StudyButton(props: {text: string, shortcut?: string, onClick: () => void}) {
   return (
     <button className="Study-button" onClick={props.onClick}>{props.text}{props.shortcut && !touchAvail && (
@@ -115,6 +115,20 @@ function StudyButton(props: {text: string, shortcut?: string, onClick: () => voi
   );
 }
 */
+
+function TranscriptionTranslation(props: {anno: APIAnno, atomsInfo: APIAtomsInfo, trans: ReadonlyArray<string>}) {
+  return (
+    <div>
+      <div className="TranscriptionTranslation-transcription"><Transcription anno={props.anno} atomsInfo={props.atomsInfo} atomsFailed={[]} /></div>
+      <div className="TranscriptionTranslation-sep"></div>
+      <div className="TranscriptionTranslation-translations">
+        {props.trans.map((translation, i) => (
+          <div key={i} className="TranscriptionTranslation-translation">{translation}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const AUDIO_PADDING = 0.5;
 const AudioPlayback = forwardRef((props: {audioUrl: string, onFinished: () => void}, ref) => {
@@ -216,15 +230,27 @@ function AudioPlayer(props: {audioUrl: string, onFinished: () => void}) {
   );
 }
 
-function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: PreloadMap, onFinished: () => void}) {
+function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: () => void}) {
+  const [showText, setShowText] = useState(false);
+
+  const handleAudioFinished = () => {
+    setShowText(true);
+  };
+
+  const handleClickNext = () => {
+    props.onFinished();
+  };
+
   return (
-    <div>
-      <ImageAudioPlayer imageFn={props.preloadMap[props.slide.imageFn]} audioFn={props.preloadMap[props.slide.audioFn]} onFinished={props.onFinished} />
+    <div className="SectionTTSSlide">
+      <ImageAudioPlayer imageFn={props.preloadMap[props.slide.imageFn]} audioFn={props.preloadMap[props.slide.audioFn]} onFinished={handleAudioFinished} />
+      {showText && <TranscriptionTranslation anno={props.slide.anno} trans={props.slide.trans} atomsInfo={props.atomsInfo} />}
+      {showText && <div className="SectionTTSSlide-bottom"><button className="StandardButton" onClick={handleClickNext}>Next</button></div>}
     </div>
   );
 }
 
-function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadMap: PreloadMap, onFinished: (atomReports: AtomReports) => void}) {
+function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: (atomReports: AtomReports) => void}) {
   const [slideIndex, setSlideIndex] = useState(0);
 
   return (
@@ -232,6 +258,7 @@ function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadM
       key={slideIndex}
       slide={props.section.slides[slideIndex]}
       preloadMap={props.preloadMap}
+      atomsInfo={props.atomsInfo}
       onFinished={() => {
         if (slideIndex === (props.section.slides.length-1)) {
           props.onFinished({
@@ -287,8 +314,9 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
 
 function Activity(props: {activityState: ActivityState, dispatch: AppDispatch}) {
   const activityState = props.activityState;
+  const activity = activityState.activity;
   const sectionIndex = activityState.sectionIndex
-  const section = activityState.activity.sections[sectionIndex];
+  const section = activity.sections[sectionIndex];
 
   // scroll to top on activity start, and on section change
   useLayoutEffect(() => {
@@ -306,6 +334,7 @@ function Activity(props: {activityState: ActivityState, dispatch: AppDispatch}) 
           key={sectionIndex}
           section={section}
           preloadMap={activityState.preloadMap}
+          atomsInfo={activity.atomsInfo}
           onFinished={handleFinished}
         />
       );

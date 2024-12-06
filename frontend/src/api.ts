@@ -112,10 +112,13 @@ export type APIActivitySectionQMTI = {
 
 export type APIActivitySection = APIActivitySectionTTSSlides | APIActivitySectionQMTI;
 
+export type APIAtomsInfo = {[key: string]: APIAtomInfo};
+
 export interface APIActivity {
   readonly introAtoms: ReadonlyArray<string>;
   readonly reqAtoms: ReadonlyArray<string>;
   readonly testedAtoms: ReadonlyArray<string>;
+  readonly atomsInfo: APIAtomsInfo;
   readonly sections: ReadonlyArray<APIActivitySection>;
 }
 
@@ -159,6 +162,7 @@ const mapActivity = (activity: any): APIActivity => {
     introAtoms: activity.intro_atoms,
     reqAtoms: activity.req_atoms,
     testedAtoms: activity.tested_atoms,
+    atomsInfo: activity.atoms_info,
     sections: activity.sections.map((section: any) => mapActivitySection(section)),
   };
 };
@@ -166,7 +170,6 @@ const mapActivity = (activity: any): APIActivity => {
 export interface APIPickActivityResponse {
   readonly mediaUrlPrefix: string;
   readonly activity: APIActivity;
-  readonly atomInfo: {[key: string]: APIAtomInfo};
 }
 
 export const apiPickActivity = async (sessionToken: string): Promise<APIPickActivityResponse> => {
@@ -177,7 +180,6 @@ export const apiPickActivity = async (sessionToken: string): Promise<APIPickActi
   return {
     mediaUrlPrefix: resp.media_url_prefix,
     activity: mapActivity(resp.activity),
-    atomInfo: resp.atom_info,
   };
 };
 

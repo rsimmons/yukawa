@@ -21,6 +21,10 @@ def load_prepare_content(debug=False):
         for generator_spec in content['activities']:
             content['generator_objects'].append(construct_generator(generator_spec))
 
+        content['atom_map'] = {}
+        for atom in content['atoms']:
+            content['atom_map'][atom['id']] = atom
+
         result[lang] = content
 
     return result

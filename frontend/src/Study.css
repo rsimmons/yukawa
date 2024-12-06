@@ -26,6 +26,22 @@
   display: block;
 }
 
+.SectionTTSSlide {
+  flex: 1; /* fill vertical space below header */
+  display: flex;
+  flex-direction: column;
+}
+
+.SectionTTSSlide-bottom {
+  margin-top: auto;
+  padding: 0.5em;
+  margin-bottom: 1em;
+}
+
+.SectionTTSSlide-bottom button {
+  font-size: 24px;
+}
+
 .SectionQMTI {
   flex: 1; /* fill vertical space below header */
   display: flex;
@@ -127,6 +143,26 @@
 .Study-button-shortcut {
   color: #888;
 }
+*/
+
+.TranscriptionTranslation-transcription {
+  font-size: 2rem;
+  margin-top: 0.5em;
+  margin-bottom: 0.25em;
+}
+
+.TranscriptionTranslation-sep {
+  height: 1px;
+  width: 75%;
+  margin: 0 auto;
+  background-color: #ccc;
+}
+
+.TranscriptionTranslation-translations {
+  font-size: 1.5rem;
+  margin-top: 0.25em;
+  margin-bottom: 0.5em;
+}
 
 .Study-transcription-span-atom-open {
   background-color: #ffff00;
@@ -158,5 +194,3 @@
   color: #555;
   font-size: 0.8em;
 }
-
-*/
