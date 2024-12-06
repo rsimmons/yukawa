@@ -8,7 +8,9 @@ import './Study.css';
 import { APIActivitySectionQMTI, APIActivitySectionTTSSlides, APIActivityTTSSlide, APIAnno, APIAtomsInfo } from "./api";
 import backArrowSvg from './back-arrow.svg';
 import audioSvg from './audio.svg';
+import audioBgSvg from './audio-bg.svg';
 import replaySvg from './replay.svg';
+import replayBgSvg from './replay-bg.svg';
 
 function AtomPopup(props: {atomId: string, meaning: string | null, notes: string | null}) {
   return (
@@ -185,10 +187,11 @@ const AudioPlayback = forwardRef((props: {audioUrl: string, onFinished: () => vo
 
 function ImageAudioPlayer(props: {imageFn: string, audioFn: string, onFinished: () => void}) {
   const [showReplay, setShowReplay] = useState(false);
+  const audioPlaybackRef = useRef<{restart: () => void} | null>(null);
 
   const handleClickReplay = () => {
     setShowReplay(false);
-    props.onFinished();
+    audioPlaybackRef.current?.restart();
   };
 
   const handleAudioFinished = () => {
@@ -197,9 +200,17 @@ function ImageAudioPlayer(props: {imageFn: string, audioFn: string, onFinished: 
   };
 
   return (
-    <div>
+    <div className="ImageAudioPlayer">
       <img className="ImageAudioPlayer-img" src={props.imageFn} />
-      <AudioPlayback audioUrl={props.audioFn} onFinished={handleAudioFinished} />
+      <AudioPlayback audioUrl={props.audioFn} onFinished={handleAudioFinished} ref={audioPlaybackRef} />
+      <div className="ImageAudioPlayer-audio-icon">
+        <img src={audioBgSvg} />
+      </div>
+      {showReplay && (
+        <div className="ImageAudioPlayer-replay-icon" onClick={handleClickReplay}>
+          <img src={replayBgSvg} />
+        </div>
+      )}
     </div>
   );
 }
@@ -230,7 +241,7 @@ function AudioPlayer(props: {audioUrl: string, onFinished: () => void}) {
   );
 }
 
-function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: () => void}) {
+function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, isLastSlide: boolean, onFinished: () => void}) {
   const [showText, setShowText] = useState(false);
 
   const handleAudioFinished = () => {
@@ -245,7 +256,7 @@ function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: Preload
     <div className="SectionTTSSlide">
       <ImageAudioPlayer imageFn={props.preloadMap[props.slide.imageFn]} audioFn={props.preloadMap[props.slide.audioFn]} onFinished={handleAudioFinished} />
       {showText && <TranscriptionTranslation anno={props.slide.anno} trans={props.slide.trans} atomsInfo={props.atomsInfo} />}
-      {showText && <div className="SectionTTSSlide-bottom"><button className="StandardButton" onClick={handleClickNext}>Next</button></div>}
+      {showText && <div className="SectionTTSSlide-bottom"><button className="StandardButton" onClick={handleClickNext}>{props.isLastSlide ? 'Continue' : 'Next'}</button></div>}
     </div>
   );
 }
@@ -259,6 +270,7 @@ function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadM
       slide={props.section.slides[slideIndex]}
       preloadMap={props.preloadMap}
       atomsInfo={props.atomsInfo}
+      isLastSlide={slideIndex === (props.section.slides.length-1)}
       onFinished={() => {
         if (slideIndex === (props.section.slides.length-1)) {
           props.onFinished({
