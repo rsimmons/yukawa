@@ -15,10 +15,20 @@
 
 .Study-header-back {
   text-align: left;
+  position: relative;
 }
 .Study-header-back img {
-  cursor: pointer;
   display: block;
+  width: 20px;
+  height: 20px;
+}
+.Study-header-back-overlay {
+  position: absolute;
+  top: -20px;
+  left: -20px;
+  width: 60px;
+  height: 60px;
+  cursor: pointer;
 }
 
 .ImageAudioPlayer-img {

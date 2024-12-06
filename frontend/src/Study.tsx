@@ -390,7 +390,10 @@ export default function Study() {
   return (
     <div className="Study">
       <div className="Study-header">
-        <div className="Study-header-back"><img src={backArrowSvg} onClick={onClickBack} width="20px" height="20px" /></div>
+        <div className="Study-header-back">
+          <img src={backArrowSvg} />
+          <div className="Study-header-back-overlay" onClick={onClickBack}></div>
+        </div>
       </div>
       {(() => {
         if (studyState.activityState === undefined) {
