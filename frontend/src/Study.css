@@ -58,8 +58,11 @@
   flex-direction: column;
 }
 
-.SectionQMTI-choices {
+.SectionQMTI-bottom {
   margin-top: auto;
+}
+
+.SectionQMTI-choices {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.5em;
@@ -71,6 +74,29 @@
   border-radius: 0.5em;
   display: block;
 }
+
+.SectionQMTI-choice-selectable:hover {
+  outline: 3px solid blue;
+  cursor: pointer;
+}
+
+.SectionQMTI-choice-correct {
+  outline: 3px solid green;
+}
+
+.SectionQMTI-choice-incorrect {
+  outline: 3px solid red;
+}
+
+.SectionQMTI-continue-section {
+  margin-top: 1em;
+  text-align: center;
+}
+
+.SectionQMTI-continue-section button {
+  font-size: 24px;
+}
+
 
 .AudioPlayer-audio-svg, .AudioPlayer-replay-svg {
   height: 4em;

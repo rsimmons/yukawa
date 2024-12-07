@@ -11,6 +11,8 @@ import audioSvg from './audio.svg';
 import audioBgSvg from './audio-bg.svg';
 import replaySvg from './replay.svg';
 import replayBgSvg from './replay-bg.svg';
+import successSfx from './sfx/success.wav';
+import failureSfx from './sfx/failure.wav';
 
 function AtomPopup(props: {atomId: string, meaning: string | null, notes: string | null}) {
   return (
@@ -288,40 +290,88 @@ function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadM
   )
 }
 
-function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: PreloadMap, onFinished: (atomReports: AtomReports) => void}) {
-  const handleAudioFinished = () => {
-    // TODO: do nothing for now
+function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: (atomReports: AtomReports) => void}) {
+  const [selectedChoiceIdx, setSelectedChoiceIdx] = useState<number | null>(null);
+  const successAudioRef = useRef<HTMLAudioElement>(null);
+  const failureAudioRef = useRef<HTMLAudioElement>(null);
+
+  const handleClickChoice = (choiceIdx: number) => {
+    setSelectedChoiceIdx(choiceIdx);
+    const choice = props.section.choices[choiceIdx];
+    if (choice.correct) {
+      successAudioRef.current?.play();
+    } else {
+      failureAudioRef.current?.play();
+    }
+  };
+
+  const handleClickContinue = () => {
+    if (selectedChoiceIdx === null) {
+      throw new Error('invalid state');
+    }
+
+    const choice = props.section.choices[selectedChoiceIdx];
+    let atomsPassed: ReadonlyArray<string>;
+    let atomsFailed: ReadonlyArray<string>;
+    if (choice.correct) {
+      atomsPassed = props.section.testedAtoms;
+      atomsFailed = [];
+    } else {
+      atomsPassed = [];
+      const extraFailed = choice.failAtoms ? choice.failAtoms : [];
+      atomsFailed = [...props.section.testedAtoms, ...extraFailed];
+    }
+    props.onFinished({
+      atomsIntroduced: [],
+      atomsExposed: [],
+      atomsForgot: [],
+      atomsPassed,
+      atomsFailed,
+    });
   };
 
   return (
     <div className="SectionQMTI">
-      <AudioPlayer audioUrl={props.preloadMap[props.section.audioFn]} onFinished={handleAudioFinished} />
-      <div className="SectionQMTI-choices">
-        {props.section.choices.map((choice) => {
-          const handleClick = () => {
-            let atomsPassed: ReadonlyArray<string>;
-            let atomsFailed: ReadonlyArray<string>;
-            if (choice.correct) {
-              atomsPassed = props.section.testedAtoms;
-              atomsFailed = [];
+      <AudioPlayer audioUrl={props.preloadMap[props.section.audioFn]} onFinished={() => {}} />
+      {(selectedChoiceIdx !== null) && (
+        <TranscriptionTranslation anno={props.section.anno} trans={props.section.trans} atomsInfo={props.atomsInfo} />
+      )}
+      <div className="SectionQMTI-bottom">
+        {(selectedChoiceIdx !== null) && (
+          <div className="SectionQMTI-continue-section">
+            <button className="StandardButton" onClick={handleClickContinue}>Continue</button>
+          </div>
+        )}
+        <div className="SectionQMTI-choices">
+          {props.section.choices.map((choice, choiceIdx) => {
+            const isSelected = selectedChoiceIdx === choiceIdx;
+            const isCorrect = choice.correct;
+            const classList = ['SectionQMTI-choice-image'];
+            if (selectedChoiceIdx === null) {
+              classList.push('SectionQMTI-choice-selectable');
             } else {
-              atomsPassed = [];
-              const extraFailed = choice.failAtoms ? choice.failAtoms : [];
-              atomsFailed = [...props.section.testedAtoms, ...extraFailed];
+              if (isCorrect) {
+                classList.push('SectionQMTI-choice-correct');
+              }
+              if (isSelected && !isCorrect) {
+                classList.push('SectionQMTI-choice-incorrect');
+              }
             }
-            props.onFinished({
-              atomsIntroduced: [],
-              atomsExposed: [],
-              atomsForgot: [],
-              atomsPassed,
-              atomsFailed,
-            });
-          };
-          return <img className="SectionQMTI-choice-image" key={choice.imageFn} src={props.preloadMap[choice.imageFn]} onClick={handleClick} />
-        })}
+            return (
+              <img
+                className={classList.join(' ')}
+                key={choice.imageFn}
+                src={props.preloadMap[choice.imageFn]}
+                onClick={() => handleClickChoice(choiceIdx)}
+              />
+            );
+          })}
+        </div>
       </div>
+      <audio ref={successAudioRef} src={successSfx} />
+      <audio ref={failureAudioRef} src={failureSfx} />
     </div>
-  )
+  );
 }
 
 function Activity(props: {activityState: ActivityState, dispatch: AppDispatch}) {
@@ -357,6 +407,7 @@ function Activity(props: {activityState: ActivityState, dispatch: AppDispatch}) 
           key={sectionIndex}
           section={section}
           preloadMap={activityState.preloadMap}
+          atomsInfo={activity.atomsInfo}
           onFinished={handleFinished}
         />
       );
