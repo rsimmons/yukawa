@@ -67,6 +67,7 @@
   grid-template-columns: 1fr 1fr;
   gap: 0.5em;
   padding: 0.5em;
+  position: relative;
 }
 
 .SectionQMTI-choice-image {
@@ -80,8 +81,12 @@
   cursor: pointer;
 }
 
+.SectionQMTI-choice-unselectable {
+  opacity: 0.75;
+}
+
 .SectionQMTI-choice-correct {
-  outline: 3px solid green;
+  outline: 3px solid #0a0;
 }
 
 .SectionQMTI-choice-incorrect {
@@ -93,10 +98,18 @@
   text-align: center;
 }
 
-.SectionQMTI-continue-section button {
-  font-size: 24px;
+.SectionQMTI-continue-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
 }
 
+.SectionQMTI-continue-overlay button {
+  font-size: 24px;
+  box-shadow: 0 0 15px 0 rgba(0, 0, 0, 0.85);
+}
 
 .AudioPlayer-audio-svg, .AudioPlayer-replay-svg {
   height: 4em;

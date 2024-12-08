@@ -337,11 +337,6 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
         <TranscriptionTranslation anno={props.section.anno} trans={props.section.trans} atomsInfo={props.atomsInfo} />
       )}
       <div className="SectionQMTI-bottom">
-        {(selectedChoiceIdx !== null) && (
-          <div className="SectionQMTI-continue-section">
-            <button className="StandardButton" onClick={handleClickContinue}>Continue</button>
-          </div>
-        )}
         <div className="SectionQMTI-choices">
           {props.section.choices.map((choice, choiceIdx) => {
             const isSelected = selectedChoiceIdx === choiceIdx;
@@ -350,6 +345,7 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
             if (selectedChoiceIdx === null) {
               classList.push('SectionQMTI-choice-selectable');
             } else {
+              classList.push('SectionQMTI-choice-unselectable');
               if (isCorrect) {
                 classList.push('SectionQMTI-choice-correct');
               }
@@ -366,6 +362,11 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
               />
             );
           })}
+          {(selectedChoiceIdx !== null) && (
+            <div className="SectionQMTI-continue-overlay">
+              <button className="StandardButton" onClick={handleClickContinue}>Continue</button>
+            </div>
+          )}
         </div>
       </div>
       <audio ref={successAudioRef} src={successSfx} />
