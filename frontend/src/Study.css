@@ -1,3 +1,21 @@
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes reduceOpacity {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.7;
+  }
+}
+
 .Study {
   max-width: 854px;
   margin: 0 auto;
@@ -76,13 +94,17 @@
   display: block;
 }
 
-.SectionQMTI-choice-selectable:hover {
-  outline: 3px solid blue;
-  cursor: pointer;
+/* prevent false hover on mobile Safari */
+@media (hover) {
+  .SectionQMTI-choice-selectable:hover {
+    outline: 3px solid blue;
+    cursor: pointer;
+  }
 }
 
 .SectionQMTI-choice-unselectable {
-  opacity: 0.75;
+  animation: reduceOpacity 0.1s linear;
+  opacity: 0.7;
 }
 
 .SectionQMTI-choice-correct {
@@ -104,6 +126,11 @@
   left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
+  animation: fadeIn 0.1s linear;
+}
+
+.SectionQMTI .TranscriptionTranslation {
+  animation: fadeIn 0.1s linear;
 }
 
 .SectionQMTI-continue-overlay button {

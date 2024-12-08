@@ -122,7 +122,7 @@ function StudyButton(props: {text: string, shortcut?: string, onClick: () => voi
 
 function TranscriptionTranslation(props: {anno: APIAnno, atomsInfo: APIAtomsInfo, trans: ReadonlyArray<string>}) {
   return (
-    <div>
+    <div className="TranscriptionTranslation">
       <div className="TranscriptionTranslation-transcription"><Transcription anno={props.anno} atomsInfo={props.atomsInfo} atomsFailed={[]} /></div>
       <div className="TranscriptionTranslation-sep"></div>
       <div className="TranscriptionTranslation-translations">
