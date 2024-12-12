@@ -263,7 +263,7 @@ function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: Preload
   );
 }
 
-function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: (atomReports: AtomReports) => void}) {
+function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: (atomReports: AtomReports, failed: boolean | undefined) => void}) {
   const [slideIndex, setSlideIndex] = useState(0);
 
   return (
@@ -281,7 +281,7 @@ function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadM
             atomsForgot: [],
             atomsPassed: [],
             atomsFailed: [],
-          });
+          }, undefined);
         } else {
           setSlideIndex(slideIndex + 1);
         }
@@ -290,7 +290,7 @@ function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadM
   )
 }
 
-function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: (atomReports: AtomReports) => void}) {
+function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: (atomReports: AtomReports, failed: boolean | undefined) => void}) {
   const [selectedChoiceIdx, setSelectedChoiceIdx] = useState<number | null>(null);
   const successAudioRef = useRef<HTMLAudioElement>(null);
   const failureAudioRef = useRef<HTMLAudioElement>(null);
@@ -327,7 +327,7 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
       atomsForgot: [],
       atomsPassed,
       atomsFailed,
-    });
+    }, !choice.correct);
   };
 
   return (
@@ -386,8 +386,8 @@ function Activity(props: {activityState: ActivityState, dispatch: AppDispatch}) 
     document.documentElement.scrollTo({top:0, left:0, behavior: "instant"});
   }, [sectionIndex]);
 
-  const handleFinished = (atomReports: AtomReports) => {
-    props.dispatch(thunkStudyFinishedSection(atomReports));
+  const handleFinished = (atomReports: AtomReports, failed: boolean | undefined) => {
+    props.dispatch(thunkStudyFinishedSection(atomReports, failed));
   }
 
   switch (section.kind) {

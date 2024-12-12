@@ -114,7 +114,8 @@ export const thunkStudyInit = (): AppThunk => async (dispatch, getState) => {
   await loadActivity(dispatch, state.sess.sessionToken);
 };
 
-export const thunkStudyFinishedSection = (atomReports: AtomReports): AppThunk => async (dispatch, getState) => {
+export const thunkStudyFinishedSection = (atomReports: AtomReports, failed: boolean | undefined): AppThunk => async (dispatch, getState) => {
+  console.log('thunkStudyFinishedSection', atomReports, failed);
   const state = getState();
   if (state.type !== 'loggedIn') {
     throw new Error('invalid state');
@@ -126,43 +127,50 @@ export const thunkStudyFinishedSection = (atomReports: AtomReports): AppThunk =>
     throw new Error('invalid study state');
   }
 
-  dispatch(actionAccumAtomReports(atomReports));
-
   const activityState = state.sess.page.studyState.activityState;
   const activity = activityState.activity;
-  const newSectionIndex = activityState.sectionIndex + 1;
-  if (newSectionIndex >= activity.sections.length) {
-    dispatch(actionAccumAtomReports({
-      atomsIntroduced: activity.introAtoms,
-      atomsExposed: [],
-      atomsForgot: [],
-      atomsPassed: [],
-      atomsFailed: [],
-    }));
 
-    const updatedState = getState();
-    if (updatedState.type !== 'loggedIn') {
-      throw new Error('invalid state');
-    }
-    if (updatedState.sess.page.type !== 'study') {
-      throw new Error('invalid page');
-    }
-    if (updatedState.sess.page.studyState.activityState === undefined) {
-      throw new Error('invalid study state');
-    }
-    const updatedAtomReports = updatedState.sess.page.studyState.activityState.accumAtomReports;
-
-    await apiReportResult(state.sess.sessionToken, 'es', {
-      atomsIntroduced: Array.from(updatedAtomReports.atomsIntroduced),
-      atomsExposed: Array.from(updatedAtomReports.atomsExposed),
-      atomsForgot: Array.from(updatedAtomReports.atomsForgot),
-      atomsPassed: Array.from(updatedAtomReports.atomsPassed),
-      atomsFailed: Array.from(updatedAtomReports.atomsFailed),
-    });
-
-    loadActivity(dispatch, state.sess.sessionToken);
+  const curSectionIndex = activityState.sectionIndex;
+  const curSection = activity.sections[curSectionIndex];
+  if ((curSection.kind === 'qmti') && (curSection.onFail === 'restart') && (failed === true)) {
+    dispatch(actionGoToSection(0));
   } else {
-    dispatch(actionStudyNextSection());
+    dispatch(actionAccumAtomReports(atomReports));
+    const newSectionIndex = curSectionIndex + 1;
+
+    if (newSectionIndex >= activity.sections.length) {
+      dispatch(actionAccumAtomReports({
+        atomsIntroduced: activity.introAtoms,
+        atomsExposed: [],
+        atomsForgot: [],
+        atomsPassed: [],
+        atomsFailed: [],
+      }));
+
+      const updatedState = getState();
+      if (updatedState.type !== 'loggedIn') {
+        throw new Error('invalid state');
+      }
+      if (updatedState.sess.page.type !== 'study') {
+        throw new Error('invalid page');
+      }
+      if (updatedState.sess.page.studyState.activityState === undefined) {
+        throw new Error('invalid study state');
+      }
+      const updatedAtomReports = updatedState.sess.page.studyState.activityState.accumAtomReports;
+
+      await apiReportResult(state.sess.sessionToken, 'es', {
+        atomsIntroduced: Array.from(updatedAtomReports.atomsIntroduced),
+        atomsExposed: Array.from(updatedAtomReports.atomsExposed),
+        atomsForgot: Array.from(updatedAtomReports.atomsForgot),
+        atomsPassed: Array.from(updatedAtomReports.atomsPassed),
+        atomsFailed: Array.from(updatedAtomReports.atomsFailed),
+      });
+
+      loadActivity(dispatch, state.sess.sessionToken);
+    } else {
+      dispatch(actionGoToSection(newSectionIndex));
+    }
   }
 }
 
@@ -171,7 +179,7 @@ const actionStudyLoadActivity = createAction<{
   readonly preloadMap: PreloadMap;
 }>('studyLoadActivity');
 export const actionAccumAtomReports = createAction<AtomReports>('accumAtomReports');
-const actionStudyNextSection = createAction('studyNextSection');
+const actionGoToSection = createAction<number>('goToSection');
 
 const studyReducer = createReducer<StudyState>(initialStudyState, (builder) => {
   builder
@@ -193,27 +201,20 @@ const studyReducer = createReducer<StudyState>(initialStudyState, (builder) => {
         },
       };
     })
-    .addCase(actionStudyNextSection, (state, _action) => {
+    .addCase(actionGoToSection, (state, action) => {
       if (state.activityState === undefined) {
         return state;
-      }
-
-      const activityState = state.activityState;
-      const sections = activityState.activity.sections;
-
-      const newSectionIndex = activityState.sectionIndex + 1;
-      if (newSectionIndex >= sections.length) {
-        throw new Error('invalid section index');
       }
 
       return {
         loading: false,
         activityState: {
           ...state.activityState,
-          sectionIndex: newSectionIndex
+          sectionIndex: action.payload,
         },
       };
-    }).addCase(actionAccumAtomReports, (state, action) => {
+    })
+    .addCase(actionAccumAtomReports, (state, action) => {
       if (state.activityState === undefined) {
         return state;
       }
