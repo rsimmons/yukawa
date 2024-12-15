@@ -35,17 +35,6 @@ def init_srs_data():
     }
 
 def add_atoms_info(lang, activity):
-    # def add_anno_atoms_info(anno):
-    #     for span in anno:
-    #         if 'a' in span:
-    #             atom_id = span['a']
-    #             if atom_id not in atom_info:
-    #                 content_atom_info = CONTENT[lang]['base']['atom_map'][atom_id]
-    #                 atoms_info[atom_id] = {
-    #                     'meaning': content_atom_info.get('meaning'),
-    #                     'notes': content_atom_info.get('notes'),
-    #                 }
-
     atoms_info = {}
 
     all_atoms = set()
@@ -65,11 +54,8 @@ def add_atoms_info(lang, activity):
 
 def atom_dueness(interval, elapsed):
     assert interval is not None
+    assert interval > 0
     assert elapsed is not None
-
-    if interval == 0:
-        # this is a special case for atoms that have been introduced but not yet reviewed
-        return 'due'
 
     rel_elapsed = elapsed / interval
     if (elapsed > MIN_OVERDUE_INTERVAL) and (rel_elapsed > REL_OVERDUE_THRESHOLD):
@@ -138,9 +124,11 @@ def pick_activity(lang, srs_data, t):
 
 # interval and elapsed may be None is this is the first time the atom is being asked
 def update_interval(interval, elapsed, grade):
+    assert grade in ['introduced', 'passed', 'failed', 'exposed', 'forgot']
+    boost = (grade in ['passed', 'exposed'])
+
     if interval is None:
-        assert grade == 'introduced'
-        return 0
+        return INIT_INTERVAL_AFTER_SUCCESS if boost else INIT_INTERVAL_AFTER_FAILURE
     else:
         assert elapsed is not None
 
@@ -148,21 +136,15 @@ def update_interval(interval, elapsed, grade):
         if dueness == 'overdue' and grade == 'introduced':
             return 0
 
-        assert grade in ['introduced', 'passed', 'failed', 'exposed', 'forgot']
-        boost = (grade in ['passed', 'exposed'])
-
-        if interval == 0:
-            return INIT_INTERVAL_AFTER_SUCCESS if boost else INIT_INTERVAL_AFTER_FAILURE
+        if boost:
+            # this formula is unusual, but works at important points:
+            # - if elapsed==interval then the new interval will be interval*INTERVAL_SUCCESS_MULTIPLIER
+            # - if elapsed==0 then the interval will be unchanged
+            # furthermore, we limit how much the interval can grow, in case it was asked very late and they got it right by a fluke
+            new_interval = interval + (elapsed * (INTERVAL_SUCCESS_MULTIPLIER - 1))
+            return int(min(new_interval, interval*MAX_INTERVAL_MULTIPLIER))
         else:
-            if boost:
-                # this formula is unusual, but works at important points:
-                # - if elapsed==interval then the new interval will be interval*INTERVAL_SUCCESS_MULTIPLIER
-                # - if elapsed==0 then the interval will be unchanged
-                # furthermore, we limit how much the interval can grow, in case it was asked very late and they got it right by a fluke
-                new_interval = interval + (elapsed * (INTERVAL_SUCCESS_MULTIPLIER - 1))
-                return int(min(new_interval, interval*MAX_INTERVAL_MULTIPLIER))
-            else:
-                return int(max(MIN_INTERVAL, interval / INTERVAL_FAILURE_DIVISOR))
+            return int(max(MIN_INTERVAL, interval / INTERVAL_FAILURE_DIVISOR))
 
 # result is
 # {
