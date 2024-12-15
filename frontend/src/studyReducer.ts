@@ -115,7 +115,6 @@ export const thunkStudyInit = (): AppThunk => async (dispatch, getState) => {
 };
 
 export const thunkStudyFinishedSection = (atomReports: AtomReports, failed: boolean | undefined): AppThunk => async (dispatch, getState) => {
-  console.log('thunkStudyFinishedSection', atomReports, failed);
   const state = getState();
   if (state.type !== 'loggedIn') {
     throw new Error('invalid state');
