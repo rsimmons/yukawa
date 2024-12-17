@@ -110,16 +110,6 @@ function Transcription(props: {anno: APIAnno, atomsInfo: APIAtomsInfo, atomsFail
   );
 }
 
-/*
-function StudyButton(props: {text: string, shortcut?: string, onClick: () => void}) {
-  return (
-    <button className="Study-button" onClick={props.onClick}>{props.text}{props.shortcut && !touchAvail && (
-      <span className="Study-button-shortcut"> {props.shortcut}</span>
-    )}</button>
-  );
-}
-*/
-
 function TranscriptionTranslation(props: {anno: APIAnno, atomsInfo: APIAtomsInfo, trans: ReadonlyArray<string>}) {
   return (
     <div className="TranscriptionTranslation">
@@ -462,91 +452,4 @@ export default function Study() {
       })()}
     </div>
   )
-  /*
-  const question = page.question;
-  return (
-    <div>
-      <video className="Study-video" playsInline key={question.mediaUrl} autoPlay={true} ref={videoRef} onTimeUpdate={handleVideoTimeUpdate} onClick={handleVideoClick}>
-        <source src={question.mediaUrl} type="video/mp4" />
-        Your browser does not support the video tag.
-      </video>
-      {((page.stage === 'grading_hearing') || (page.stage === 'grading_understanding') || (page.stage === 'grading_atoms')) && (
-        <div className="Study-transcription"><TranscriptionSpans spans={question.spans} atomInfo={question.atomInfo} atomsFailed={page.grades.atomsFailed} dispatch={dispatch} /></div>
-      )}
-      {((page.stage === 'grading_understanding') || (page.stage === 'grading_atoms')) && (
-        <div className="Study-translations">
-          {question.translations.map((translation, i) => (
-            <div key={i} className="Study-translation">{translation}</div>
-          ))}
-          {question.notes && <div className="Study-translation-notes">{question.notes}</div>}
-        </div>
-      )}
-      <div className="Study-pad"></div>
-      {(() => {
-        switch (page.stage) {
-          case 'listening':
-            return (
-              <div className="Study-controls">
-                <div className="Study-controls-instructions">Listen carefully</div>
-              </div>
-            );
-
-          case 'grading_allowed':
-            return (
-              <div className="Study-controls">
-                <div className="Study-controls-instructions">Can you understand it?<br/>{touchAvail ? 'R' : '[R]'}eplay if needed</div>
-                <div className="Study-controls-buttons">
-                  <StudyButton text="Reveal Captions" shortcut="[space]" onClick={handleBeginGrading} />
-                </div>
-              </div>
-            );
-
-          case 'grading_hearing':
-            return (
-              <div className="Study-controls">
-                <div className="Study-controls-instructions">Did you correctly hear the words before seeing captions?</div>
-                <div className="Study-controls-buttons">
-                  <StudyButton text="No" shortcut="[1]" onClick={() => {handleGradeHearing('n')}} />
-                  <StudyButton text="Mostly" shortcut="[2]" onClick={() => {handleGradeHearing('m')}} />
-                  <StudyButton text="Fully" shortcut="[3]" onClick={() => {handleGradeHearing('y')}} />
-                </div>
-              </div>
-            );
-
-          case 'grading_understanding':
-            return (
-              <div className="Study-controls">
-                <div className="Study-controls-instructions">Did you correctly understand the meaning before seeing the translation?</div>
-                <div className="Study-controls-buttons">
-                  <StudyButton text="No" shortcut="[1]" onClick={() => {handleGradeUnderstanding('n')}} />
-                  <StudyButton text="Mostly" shortcut="[2]" onClick={() => {handleGradeUnderstanding('m')}} />
-                  <StudyButton text="Fully" shortcut="[3]" onClick={() => {handleGradeUnderstanding('y')}} />
-                </div>
-              </div>
-            );
-
-          case 'grading_atoms':
-            return (
-              <div className="Study-controls">
-                <div className="Study-controls-instructions">Mark any words you didn't know/remember</div>
-                <div className="Study-controls-buttons">
-                <StudyButton text="Continue" shortcut="[space]" onClick={handleGradeWords} />
-                </div>
-              </div>
-            );
-
-          case 'loading_next':
-            return (
-              <div className="Study-controls">
-                <div className="Study-controls-instructions">Loading...</div>
-              </div>
-            );
-
-          default:
-            throw new Error('invalid stage');
-        }
-      })()}
-    </div>
-  );
-  */
 }
