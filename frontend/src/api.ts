@@ -102,7 +102,6 @@ export type APIActivitySectionTTSSlides = {
 export type APIActivitySectionQMTI = {
   readonly kind: 'qmti';
   readonly testedAtoms: ReadonlyArray<string>;
-  readonly onFail: 'report' | 'restart';
   readonly text: string;
   readonly trans: ReadonlyArray<string>;
   readonly anno: APIAnno;
@@ -140,7 +139,6 @@ const mapActivitySection = (section: any): APIActivitySection => {
       return {
         kind: 'qmti',
         testedAtoms: section.tested_atoms,
-        onFail: section.on_fail,
         text: section.text,
         trans: section.trans,
         anno: section.anno,

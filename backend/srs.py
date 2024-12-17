@@ -3,6 +3,8 @@
 # atom - map from atom id to
 #   lt - last time asked (UNIX time)
 #   iv - interval (in seconds)
+#     interval is None if the atom needs to be introduced but is tracked for some reason
+#     interval is 0 if the atom has been introduced but not yet reviewed
 
 import time
 import random
@@ -12,7 +14,7 @@ from config import Config
 import gen
 
 INIT_INTERVAL_AFTER_SUCCESS = 60
-INIT_INTERVAL_AFTER_FAILURE = 10
+INIT_INTERVAL_AFTER_FAILURE = None # this will cause re-intro
 INTERVAL_SUCCESS_MULTIPLIER = 2
 INTERVAL_FAILURE_DIVISOR = 2
 MIN_INTERVAL = 10
@@ -53,9 +55,16 @@ def add_atoms_info(lang, activity):
     return activity
 
 def atom_dueness(interval, elapsed):
-    assert interval is not None
-    assert interval > 0
     assert elapsed is not None
+
+    if interval is None:
+        # this is for atoms that have not been introduced yet, but we have a record for.
+        # so "untracked" might not be the ideal name, but it's good enough for now.
+        return 'untracked'
+
+    if interval == 0:
+        # this is a special case for atoms that have been introduced but not yet reviewed
+        return 'due'
 
     rel_elapsed = elapsed / interval
     if (elapsed > MIN_OVERDUE_INTERVAL) and (rel_elapsed > REL_OVERDUE_THRESHOLD):
@@ -96,9 +105,13 @@ def pick_activity(lang, srs_data, t):
                 'score': score,
             })
 
+    def atom_can_be_introduced(atom_id):
+        return ((atom_due.get(atom_id, 'untracked') in ['untracked', 'overdue']) or
+            ((atom_id in srs_data['atom']) and (srs_data['atom'][atom_id]['iv'] is None)))
+
     next_intro_activity = None
     for intro_atoms in CONTENT[lang]['intro_order']:
-        if any(atom_due.get(a, 'untracked') in ['untracked', 'overdue'] for a in intro_atoms):
+        if any(atom_can_be_introduced(a) for a in intro_atoms):
             for generator in CONTENT[lang]['generator_objects']:
                 activity = generator.generate_intro_activity(intro_atoms, atom_due)
                 if activity is not None:
@@ -124,11 +137,17 @@ def pick_activity(lang, srs_data, t):
 
 # interval and elapsed may be None is this is the first time the atom is being asked
 def update_interval(interval, elapsed, grade):
-    assert grade in ['introduced', 'passed', 'failed', 'exposed', 'forgot']
-    boost = (grade in ['passed', 'exposed'])
-
     if interval is None:
-        return INIT_INTERVAL_AFTER_SUCCESS if boost else INIT_INTERVAL_AFTER_FAILURE
+        if grade == 'introduced':
+            # this is expected after the atom is first introduced
+            return 0
+        elif grade == 'failed':
+            # this can happen if the atom is not tracked yet, but it was used as a distractor
+            # in a review question and the user chose it, so it is considered "also failed"
+            # (in addition to the tested atom(s))
+            return None
+        else:
+            assert False
     else:
         assert elapsed is not None
 
@@ -136,15 +155,21 @@ def update_interval(interval, elapsed, grade):
         if dueness == 'overdue' and grade == 'introduced':
             return 0
 
-        if boost:
-            # this formula is unusual, but works at important points:
-            # - if elapsed==interval then the new interval will be interval*INTERVAL_SUCCESS_MULTIPLIER
-            # - if elapsed==0 then the interval will be unchanged
-            # furthermore, we limit how much the interval can grow, in case it was asked very late and they got it right by a fluke
-            new_interval = interval + (elapsed * (INTERVAL_SUCCESS_MULTIPLIER - 1))
-            return int(min(new_interval, interval*MAX_INTERVAL_MULTIPLIER))
+        assert grade in ['introduced', 'passed', 'failed', 'exposed', 'forgot']
+        boost = (grade in ['passed', 'exposed'])
+
+        if interval == 0:
+            return INIT_INTERVAL_AFTER_SUCCESS if boost else INIT_INTERVAL_AFTER_FAILURE
         else:
-            return int(max(MIN_INTERVAL, interval / INTERVAL_FAILURE_DIVISOR))
+            if boost:
+                # this formula is unusual, but works at important points:
+                # - if elapsed==interval then the new interval will be interval*INTERVAL_SUCCESS_MULTIPLIER
+                # - if elapsed==0 then the interval will be unchanged
+                # furthermore, we limit how much the interval can grow, in case it was asked very late and they got it right by a fluke
+                new_interval = interval + (elapsed * (INTERVAL_SUCCESS_MULTIPLIER - 1))
+                return int(min(new_interval, interval*MAX_INTERVAL_MULTIPLIER))
+            else:
+                return int(max(MIN_INTERVAL, interval / INTERVAL_FAILURE_DIVISOR))
 
 # result is
 # {

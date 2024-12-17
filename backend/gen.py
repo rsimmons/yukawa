@@ -64,7 +64,6 @@ class SimpleGenerator:
                 'text': section['text'],
                 'trans': section['trans'],
                 'anno': section['anno'],
-                'on_fail': section['on_fail'],
                 'tested_atoms': section['tested_atoms'],
             }
 
@@ -146,7 +145,15 @@ class PoolGenerator:
             return None
 
         for item in self.spec['items']:
-            if set(intro_atoms) == get_anno_atoms_set(item['anno']):
+            item_atoms = get_anno_atoms_set(item['anno'])
+
+            # are all the atoms we want to introduce in this item?
+            item_covers_intros = all(atom_id in item_atoms for atom_id in intro_atoms)
+
+            # are the requirements to use this item as an intro met, i.e. are all atoms appearing in this item either known or being introduced?
+            item_reqs_met = all((atom_id in intro_atoms) or (atom_due.get(atom_id, 'untracked') == 'not_due') for atom_id in item_atoms)
+
+            if item_covers_intros and item_reqs_met:
                 activity = {}
 
                 activity['intro_atoms'] = intro_atoms
@@ -206,7 +213,6 @@ class PoolGenerator:
                         'text': item['text'],
                         'trans': item['trans'],
                         'anno': item['anno'],
-                        'on_fail': 'report',
                         'tested_atoms': list(item_tested_atoms),
                         'audio_fn': random.choice(list(item['audio'].values())),
                     }

@@ -204,14 +204,9 @@ def build_generator_simple(activity, context):
 
             build_text_trans_audio(section, section_manifest, voice_slots, context)
 
-            on_fail = section.get('on_fail', 'report')
-            assert on_fail in ['report', 'restart'], f'unknown on_fail {on_fail}'
-            section_manifest['on_fail'] = on_fail
-
             tested_atoms = section.get('tested_atoms', [])
             assert isinstance(tested_atoms, list), 'tested_atoms must be list'
-            if on_fail == 'report':
-                assert len(tested_atoms) >= 1, 'tested_atoms must have at least one item'
+            assert len(tested_atoms) >= 1, 'tested_atoms must have at least one item'
             assert context.all_atom_ids.issuperset(tested_atoms), 'unknown tested_atoms'
             section_manifest['tested_atoms'] = tested_atoms
 
