@@ -6,12 +6,10 @@
 #     interval is None if the atom needs to be introduced but is tracked for some reason
 #     interval is 0 if the atom has been introduced but not yet reviewed
 
-import time
 import random
 
 from content import load_prepare_content
 from config import Config
-import gen
 
 INIT_INTERVAL_AFTER_SUCCESS = 60
 INIT_INTERVAL_AFTER_FAILURE = None # this will cause re-intro

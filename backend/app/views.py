@@ -1,5 +1,4 @@
 import time
-import random
 import json
 
 from flask import request, jsonify, g
@@ -29,6 +28,7 @@ def user():
         result = conn.execute(
             db.user.select().where(db.user.c.id == g.user_id)
         ).fetchone()
+    assert result is not None, f'user {g.user_id} not found'
 
     return jsonify({
         'status': 'ok',

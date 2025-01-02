@@ -47,6 +47,7 @@ def login():
                     login_count=0,
                 )
             )
+            assert result.inserted_primary_key is not None
             user_id = result.inserted_primary_key[0]
     else:
         user_id = result.id
