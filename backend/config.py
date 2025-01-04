@@ -1,10 +1,11 @@
 import os
-from typing import NamedTuple
+from dataclasses import dataclass
 
 # To generate a random key (e.g. for AUTH_KEY or SESSION_KEY):
 # ''.join(random.choices(string.ascii_letters+string.digits, k=32))
 
-class Config(NamedTuple):
+@dataclass(frozen=True)
+class Config:
     ENFORCE_HTTPS: bool
     AUTH_TOKEN_EXPIRATION: int
     AUTH_EMAIL_SUBJECT: str
