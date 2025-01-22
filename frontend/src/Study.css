@@ -54,33 +54,33 @@
   display: block;
 }
 
-.SectionTTSSlide {
+.IntroSlide {
   flex: 1; /* fill vertical space below header */
   display: flex;
   flex-direction: column;
 }
 
-.SectionTTSSlide-bottom {
+.IntroSlide-bottom {
   margin-top: auto;
   padding: 0.5em;
   margin-bottom: 1em;
 }
 
-.SectionTTSSlide-bottom button {
+.IntroSlide-bottom button {
   font-size: 24px;
 }
 
-.SectionQMTI {
+.ActivityReview {
   flex: 1; /* fill vertical space below header */
   display: flex;
   flex-direction: column;
 }
 
-.SectionQMTI-bottom {
+.ActivityReview-bottom {
   margin-top: auto;
 }
 
-.SectionQMTI-choices {
+.ActivityReview-options {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.5em;
@@ -88,7 +88,7 @@
   position: relative;
 }
 
-.SectionQMTI-choice-image {
+.ActivityReview-option-image {
   width: 100%;
   border-radius: 0.5em;
   display: block;
@@ -96,31 +96,31 @@
 
 /* prevent false hover on mobile Safari */
 @media (hover) {
-  .SectionQMTI-choice-selectable:hover {
+  .ActivityReview-option-selectable:hover {
     outline: 3px solid blue;
     cursor: pointer;
   }
 }
 
-.SectionQMTI-choice-unselectable {
+.ActivityReview-option-unselectable {
   animation: reduceOpacity 0.1s linear;
   opacity: 0.7;
 }
 
-.SectionQMTI-choice-correct {
+.ActivityReview-option-correct {
   outline: 3px solid #0a0;
 }
 
-.SectionQMTI-choice-incorrect {
+.ActivityReview-option-incorrect {
   outline: 3px solid red;
 }
 
-.SectionQMTI-continue-section {
+.ActivityReview-continue-section {
   margin-top: 1em;
   text-align: center;
 }
 
-.SectionQMTI-continue-overlay {
+.ActivityReview-continue-overlay {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -129,11 +129,11 @@
   animation: fadeIn 0.1s linear;
 }
 
-.SectionQMTI .TranscriptionTranslation {
+.ActivityReview .TranscriptionTranslation {
   animation: fadeIn 0.1s linear;
 }
 
-.SectionQMTI-continue-overlay button {
+.ActivityReview-continue-overlay button {
   font-size: 24px;
   box-shadow: 0 0 15px 0 rgba(0, 0, 0, 0.85);
 }

@@ -75,11 +75,7 @@ export interface APISpan {
 
 export type APIAnno = ReadonlyArray<APISpan>;
 
-export interface APIAtomInfo {
-  readonly meaning: string | null;
-  readonly notes: string | null;
-}
-
+/*
 export interface APIQuestionChoice {
   readonly correct: boolean;
   readonly imageFn: string;
@@ -110,17 +106,73 @@ export type APIActivitySectionQMTI = {
 }
 
 export type APIActivitySection = APIActivitySectionTTSSlides | APIActivitySectionQMTI;
+*/
+
+export interface APIAtomInfo {
+  readonly meaning: string | null;
+  readonly notes: string | null;
+}
 
 export type APIAtomsInfo = {[key: string]: APIAtomInfo};
 
-export interface APIActivity {
-  readonly introAtoms: ReadonlyArray<string>;
-  readonly reqAtoms: ReadonlyArray<string>;
-  readonly testedAtoms: ReadonlyArray<string>;
-  readonly atomsInfo: APIAtomsInfo;
-  readonly sections: ReadonlyArray<APIActivitySection>;
+export interface ATText {
+  readonly text: string;
+  readonly trans: ReadonlyArray<string>;
+  readonly anno: APIAnno;
 }
 
+interface APIActivityBase {
+  readonly atomsIntroduced: ReadonlyArray<string>;
+  readonly atomsExposed: ReadonlyArray<string>;
+  readonly atomsTested: ReadonlyArray<string>;
+}
+
+export interface APIIntroSlideAudioImage {
+  readonly kind: 'audio_image';
+  readonly attext: ATText;
+  readonly audioFn: string;
+  readonly imageFn: string;
+}
+
+export type APIIntroSlide = APIIntroSlideAudioImage;
+
+export interface APIActivityIntroSlides extends APIActivityBase {
+  readonly kind: 'intro_slides';
+  readonly slides: ReadonlyArray<APIIntroSlide>;
+}
+
+export interface APIPresAudio {
+  readonly kind: 'audio';
+  readonly audioFn: string;
+  readonly attext: ATText;
+}
+
+type APIPres = APIPresAudio;
+
+export interface APIImageOption {
+  readonly correct: boolean;
+  readonly imageFn: string;
+  readonly atomsPassed: ReadonlyArray<string>;
+  readonly atomsFailed: ReadonlyArray<string>;
+}
+
+export interface APIQuesChoiceImage {
+  readonly kind: 'choice_image';
+  readonly prompt: string | null;
+  readonly options: ReadonlyArray<APIImageOption>;
+}
+
+export type APIQues = APIQuesChoiceImage;
+
+export interface APIActivityReview extends APIActivityBase {
+  readonly kind: 'review';
+  readonly pres: APIPres;
+  readonly ques: APIQues;
+}
+
+export type APIActivity = APIActivityIntroSlides | APIActivityReview;
+
+/*
 const mapActivitySection = (section: any): APIActivitySection => {
   switch (section.kind) {
     case 'tts_slides':
@@ -164,10 +216,94 @@ const mapActivity = (activity: any): APIActivity => {
     sections: activity.sections.map((section: any) => mapActivitySection(section)),
   };
 };
+*/
+
+const mapATText = (attext: any): ATText => {
+  return {
+    text: attext.text,
+    trans: attext.trans,
+    anno: attext.anno,
+  };
+}
+
+const mapIntroSlide = (slide: any): APIIntroSlide => {
+  switch (slide.kind) {
+    case 'audio_image':
+      return {
+        kind: 'audio_image',
+        attext: mapATText(slide.attext),
+        audioFn: slide.audio_fn,
+        imageFn: slide.image_fn,
+      };
+
+    default:
+      throw new APIError('invalid intro slide kind');
+  }
+}
+
+const mapPres = (pres: any): APIPres => {
+  switch (pres.kind) {
+    case 'audio':
+      return {
+        kind: 'audio',
+        audioFn: pres.audio_fn,
+        attext: mapATText(pres.attext),
+      };
+
+    default:
+      throw new APIError('invalid pres kind');
+  }
+}
+
+const mapQues = (ques: any): APIQuesChoiceImage => {
+  switch (ques.kind) {
+    case 'choice_image':
+      return {
+        kind: 'choice_image',
+        prompt: ques.prompt,
+        options: ques.options.map((option: any): APIImageOption => ({
+          correct: option.correct,
+          imageFn: option.image_fn,
+          atomsPassed: option.atoms_passed,
+          atomsFailed: option.atoms_failed,
+        })),
+      };
+
+    default:
+      throw new APIError('invalid ques kind');
+  }
+}
+
+const mapActivity = (activity: any): APIActivity => {
+  switch (activity.kind) {
+    case 'intro_slides':
+      return {
+        kind: 'intro_slides',
+        atomsIntroduced: activity.atoms_introduced,
+        atomsExposed: activity.atoms_exposed,
+        atomsTested: activity.atoms_tested,
+        slides: activity.slides.map((slide: any): APIIntroSlide => mapIntroSlide(slide)),
+      };
+
+    case 'review':
+      return {
+        kind: 'review',
+        atomsIntroduced: activity.atoms_introduced,
+        atomsExposed: activity.atoms_exposed,
+        atomsTested: activity.atoms_tested,
+        pres: mapPres(activity.pres),
+        ques: mapQues(activity.ques),
+      };
+
+    default:
+      throw new APIError('invalid activity kind');
+  }
+}
 
 export interface APIPickActivityResponse {
   readonly mediaUrlPrefix: string;
   readonly activity: APIActivity;
+  readonly atomsInfo: APIAtomsInfo;
 }
 
 export const apiPickActivity = async (sessionToken: string): Promise<APIPickActivityResponse> => {
@@ -178,6 +314,7 @@ export const apiPickActivity = async (sessionToken: string): Promise<APIPickActi
   return {
     mediaUrlPrefix: resp.media_url_prefix,
     activity: mapActivity(resp.activity),
+    atomsInfo: resp.atoms_info,
   };
 };
 

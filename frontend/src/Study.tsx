@@ -3,9 +3,9 @@ import { actionExitStudy, RootState } from "./reducers";
 import { AppDispatch, useAppDispatch } from "./store";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useEffectOnce, useRAF } from "./util";
-import { ActivityState, AtomReports, PreloadMap, StudyState, thunkStudyFinishedSection, thunkStudyInit } from "./studyReducer";
+import { ActivityState, AtomReports, PreloadMap, StudyState, thunkStudyFinishedActivity, thunkStudyInit } from "./studyReducer";
 import './Study.css';
-import { APIActivitySectionQMTI, APIActivitySectionTTSSlides, APIActivityTTSSlide, APIAnno, APIAtomsInfo } from "./api";
+import { APIActivityIntroSlides, APIActivityReview, APIAnno, APIAtomsInfo, APIIntroSlide, ATText } from "./api";
 import backArrowSvg from './back-arrow.svg';
 import audioSvg from './audio.svg';
 import audioBgSvg from './audio-bg.svg';
@@ -110,13 +110,13 @@ function Transcription(props: {anno: APIAnno, atomsInfo: APIAtomsInfo, atomsFail
   );
 }
 
-function TranscriptionTranslation(props: {anno: APIAnno, atomsInfo: APIAtomsInfo, trans: ReadonlyArray<string>}) {
+function TranscriptionTranslation(props: {attext: ATText, atomsInfo: APIAtomsInfo}) {
   return (
     <div className="TranscriptionTranslation">
-      <div className="TranscriptionTranslation-transcription"><Transcription anno={props.anno} atomsInfo={props.atomsInfo} atomsFailed={[]} /></div>
+      <div className="TranscriptionTranslation-transcription"><Transcription anno={props.attext.anno} atomsInfo={props.atomsInfo} atomsFailed={[]} /></div>
       <div className="TranscriptionTranslation-sep"></div>
       <div className="TranscriptionTranslation-translations">
-        {props.trans.map((translation, i) => (
+        {props.attext.trans.map((translation, i) => (
           <div key={i} className="TranscriptionTranslation-translation">{translation}</div>
         ))}
       </div>
@@ -233,7 +233,7 @@ function AudioPlayer(props: {audioUrl: string, onFinished: () => void}) {
   );
 }
 
-function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, isLastSlide: boolean, onFinished: () => void}) {
+function IntroSlide(props: {slide: APIIntroSlide, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, isLastSlide: boolean, onFinished: () => void}) {
   const [showText, setShowText] = useState(false);
 
   const handleAudioFinished = () => {
@@ -245,29 +245,32 @@ function SectionTTSSlide(props: {slide: APIActivityTTSSlide, preloadMap: Preload
   };
 
   return (
-    <div className="SectionTTSSlide">
+    <div className="IntroSlide">
       <ImageAudioPlayer imageFn={props.preloadMap[props.slide.imageFn]} audioFn={props.preloadMap[props.slide.audioFn]} onFinished={handleAudioFinished} />
-      {showText && <TranscriptionTranslation anno={props.slide.anno} trans={props.slide.trans} atomsInfo={props.atomsInfo} />}
-      {showText && <div className="SectionTTSSlide-bottom"><button className="StandardButton" onClick={handleClickNext}>{props.isLastSlide ? 'Continue' : 'Next'}</button></div>}
+      {showText && <TranscriptionTranslation attext={props.slide.attext} atomsInfo={props.atomsInfo} />}
+      {showText && <div className="IntroSlide-bottom"><button className="StandardButton" onClick={handleClickNext}>{props.isLastSlide ? 'Continue' : 'Next'}</button></div>}
     </div>
   );
 }
 
-function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: (atomReports: AtomReports) => void}) {
+function ActivityIntroSlides(props: {activity: APIActivityIntroSlides, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: (atomReports: AtomReports) => void}) {
   const [slideIndex, setSlideIndex] = useState(0);
 
   return (
-    <SectionTTSSlide
+    <IntroSlide
       key={slideIndex}
-      slide={props.section.slides[slideIndex]}
+      slide={props.activity.slides[slideIndex]}
       preloadMap={props.preloadMap}
       atomsInfo={props.atomsInfo}
-      isLastSlide={slideIndex === (props.section.slides.length-1)}
+      isLastSlide={slideIndex === (props.activity.slides.length-1)}
       onFinished={() => {
-        if (slideIndex === (props.section.slides.length-1)) {
+        if (slideIndex === (props.activity.slides.length-1)) {
+          if (props.activity.atomsTested.length > 0) {
+            throw new Error('unexpected atoms tested');
+          }
           props.onFinished({
-            atomsIntroduced: [],
-            atomsExposed: [],
+            atomsIntroduced: props.activity.atomsIntroduced,
+            atomsExposed: props.activity.atomsExposed,
             atomsForgot: [],
             atomsPassed: [],
             atomsFailed: [],
@@ -280,14 +283,14 @@ function SectionTTSSlides(props: {section: APIActivitySectionTTSSlides, preloadM
   )
 }
 
-function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: (atomReports: AtomReports) => void}) {
+function ActivityReview(props: {activity: APIActivityReview, preloadMap: PreloadMap, atomsInfo: APIAtomsInfo, onFinished: (atomReports: AtomReports) => void}) {
   const [selectedChoiceIdx, setSelectedChoiceIdx] = useState<number | null>(null);
   const successAudioRef = useRef<HTMLAudioElement>(null);
   const failureAudioRef = useRef<HTMLAudioElement>(null);
 
   const handleClickChoice = (choiceIdx: number) => {
     setSelectedChoiceIdx(choiceIdx);
-    const choice = props.section.choices[choiceIdx];
+    const choice = props.activity.ques.options[choiceIdx];
     if (choice.correct) {
       successAudioRef.current?.play();
     } else {
@@ -300,20 +303,22 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
       throw new Error('invalid state');
     }
 
-    const choice = props.section.choices[selectedChoiceIdx];
+    const choice = props.activity.ques.options[selectedChoiceIdx];
     let atomsPassed: ReadonlyArray<string>;
     let atomsFailed: ReadonlyArray<string>;
     if (choice.correct) {
-      atomsPassed = props.section.testedAtoms;
+      atomsPassed = choice.atomsPassed;
       atomsFailed = [];
     } else {
       atomsPassed = [];
-      const extraFailed = choice.failAtoms ? choice.failAtoms : [];
-      atomsFailed = [...props.section.testedAtoms, ...extraFailed];
+      atomsFailed = choice.atomsFailed;
+    }
+    if (props.activity.atomsIntroduced.length > 0) {
+      throw new Error('unexpected atoms introduced');
     }
     props.onFinished({
       atomsIntroduced: [],
-      atomsExposed: [],
+      atomsExposed: props.activity.atomsExposed,
       atomsForgot: [],
       atomsPassed,
       atomsFailed,
@@ -321,39 +326,39 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
   };
 
   return (
-    <div className="SectionQMTI">
-      <AudioPlayer audioUrl={props.preloadMap[props.section.audioFn]} onFinished={() => {}} />
+    <div className="ActivityReview">
+      <AudioPlayer audioUrl={props.preloadMap[props.activity.pres.audioFn]} onFinished={() => {}} />
       {(selectedChoiceIdx !== null) && (
-        <TranscriptionTranslation anno={props.section.anno} trans={props.section.trans} atomsInfo={props.atomsInfo} />
+        <TranscriptionTranslation attext={props.activity.pres.attext} atomsInfo={props.atomsInfo} />
       )}
-      <div className="SectionQMTI-bottom">
-        <div className="SectionQMTI-choices">
-          {props.section.choices.map((choice, choiceIdx) => {
-            const isSelected = selectedChoiceIdx === choiceIdx;
-            const isCorrect = choice.correct;
-            const classList = ['SectionQMTI-choice-image'];
+      <div className="ActivityReview-bottom">
+        <div className="ActivityReview-options">
+          {props.activity.ques.options.map((option, optionIdx) => {
+            const isSelected = selectedChoiceIdx === optionIdx;
+            const isCorrect = option.correct;
+            const classList = ['ActivityReview-option-image'];
             if (selectedChoiceIdx === null) {
-              classList.push('SectionQMTI-choice-selectable');
+              classList.push('ActivityReview-option-selectable');
             } else {
-              classList.push('SectionQMTI-choice-unselectable');
+              classList.push('ActivityReview-option-unselectable');
               if (isCorrect) {
-                classList.push('SectionQMTI-choice-correct');
+                classList.push('ActivityReview-option-correct');
               }
               if (isSelected && !isCorrect) {
-                classList.push('SectionQMTI-choice-incorrect');
+                classList.push('ActivityReview-option-incorrect');
               }
             }
             return (
               <img
                 className={classList.join(' ')}
-                key={choice.imageFn}
-                src={props.preloadMap[choice.imageFn]}
-                onClick={() => handleClickChoice(choiceIdx)}
+                key={option.imageFn}
+                src={props.preloadMap[option.imageFn]}
+                onClick={() => handleClickChoice(optionIdx)}
               />
             );
           })}
           {(selectedChoiceIdx !== null) && (
-            <div className="SectionQMTI-continue-overlay">
+            <div className="ActivityReview-continue-overlay">
               <button className="StandardButton" onClick={handleClickContinue}>Continue</button>
             </div>
           )}
@@ -368,37 +373,33 @@ function SectionQMTI(props: {section: APIActivitySectionQMTI, preloadMap: Preloa
 function Activity(props: {activityState: ActivityState, dispatch: AppDispatch}) {
   const activityState = props.activityState;
   const activity = activityState.activity;
-  const sectionIndex = activityState.sectionIndex
-  const section = activity.sections[sectionIndex];
 
-  // scroll to top on activity start, and on section change
+  // scroll to top on activity start
   useLayoutEffect(() => {
     document.documentElement.scrollTo({top:0, left:0, behavior: "instant"});
-  }, [sectionIndex]);
+  }, []);
 
   const handleFinished = (atomReports: AtomReports) => {
-    props.dispatch(thunkStudyFinishedSection(atomReports));
+    props.dispatch(thunkStudyFinishedActivity(atomReports));
   }
 
-  switch (section.kind) {
-    case 'tts_slides':
+  switch (activity.kind) {
+    case 'intro_slides':
       return (
-        <SectionTTSSlides
-          key={sectionIndex}
-          section={section}
+        <ActivityIntroSlides
+          activity={activity}
           preloadMap={activityState.preloadMap}
-          atomsInfo={activity.atomsInfo}
+          atomsInfo={activityState.atomsInfo}
           onFinished={handleFinished}
         />
       );
 
-    case 'qmti':
+    case 'review':
       return (
-        <SectionQMTI
-          key={sectionIndex}
-          section={section}
+        <ActivityReview
+          activity={activity}
           preloadMap={activityState.preloadMap}
-          atomsInfo={activity.atomsInfo}
+          atomsInfo={activityState.atomsInfo}
           onFinished={handleFinished}
         />
       );

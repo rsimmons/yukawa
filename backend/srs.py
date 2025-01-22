@@ -7,9 +7,11 @@
 #     interval is 0 if the atom has been introduced but not yet reviewed
 
 import random
+from dataclasses import dataclass
 
 from content import load_prepare_content
 from config import config
+from activity import Activity
 
 INIT_INTERVAL_AFTER_SUCCESS = 60
 INIT_INTERVAL_AFTER_FAILURE = None # this will cause re-intro
@@ -34,23 +36,28 @@ def init_srs_data():
         'atom': {},
     }
 
-def add_atoms_info(lang, activity):
-    atoms_info = {}
+@dataclass
+class AtomInfo:
+    meaning: str
+    notes: str
+
+AtomsInfo = dict[str, AtomInfo]
+
+def get_atoms_info(lang, activity: Activity) -> AtomsInfo:
+    atoms_info: AtomsInfo = {}
 
     all_atoms = set()
-    all_atoms.update(activity['intro_atoms'])
-    all_atoms.update(activity['req_atoms'])
-    all_atoms.update(activity['tested_atoms'])
+    all_atoms.update(activity.atoms_introduced)
+    all_atoms.update(activity.atoms_exposed)
+    all_atoms.update(activity.atoms_tested)
     for atom_id in all_atoms:
         content_atom_info = CONTENT[lang]['atom_map'][atom_id]
-        atoms_info[atom_id] = {
-            'meaning': content_atom_info.get('meaning'),
-            'notes': content_atom_info.get('notes'),
-        }
+        atoms_info[atom_id] = AtomInfo(
+            meaning=content_atom_info.get('meaning'),
+            notes=content_atom_info.get('notes'),
+        )
 
-    activity['atoms_info'] = atoms_info
-
-    return activity
+    return atoms_info
 
 def atom_dueness(interval, elapsed):
     assert elapsed is not None
@@ -72,7 +79,7 @@ def atom_dueness(interval, elapsed):
     else:
         return 'not_due'
 
-def pick_activity(lang, srs_data, t):
+def pick_activity(lang, srs_data, t) -> tuple[Activity, AtomsInfo]:
     t = int(t)
 
     srs_debug()
@@ -126,10 +133,12 @@ def pick_activity(lang, srs_data, t):
 
     if best_review_activity:
         srs_debug('doing review activity')
-        return add_atoms_info(lang, best_review_activity)
+        atoms_info = get_atoms_info(lang, best_review_activity)
+        return (best_review_activity, atoms_info)
     elif next_intro_activity is not None:
         srs_debug('doing intro activity')
-        return add_atoms_info(lang, next_intro_activity)
+        atoms_info = get_atoms_info(lang, next_intro_activity)
+        return (next_intro_activity, atoms_info)
     else:
         assert False, 'no activities available'
 

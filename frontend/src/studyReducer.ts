@@ -1,5 +1,5 @@
 import { ThunkDispatch, UnknownAction, createAction, createReducer } from '@reduxjs/toolkit'
-import { APIActivity, apiPickActivity, APIPickActivityResponse, apiReportResult } from './api';
+import { APIActivity, APIAtomsInfo, apiPickActivity, APIPickActivityResponse, apiReportResult } from './api';
 import { AppThunk, RootState } from './reducers';
 import { genRandomStr64 } from './util';
 
@@ -8,20 +8,6 @@ import { genRandomStr64 } from './util';
 export interface PreloadMap {
   [filename: string]: string;
 }
-
-export const mergeArraysUnique = <T>(a: ReadonlyArray<T>, b: ReadonlyArray<T>): ReadonlyArray<T> => {
-  return Array.from(new Set([...a, ...b]));
-}
-
-export const combineAtomReports = (prev: AtomReports, next: AtomReports): AtomReports => {
-  return {
-    atomsIntroduced: mergeArraysUnique(prev.atomsIntroduced, next.atomsIntroduced),
-    atomsExposed: mergeArraysUnique(prev.atomsExposed, next.atomsExposed),
-    atomsForgot: mergeArraysUnique(prev.atomsForgot, next.atomsForgot),
-    atomsPassed: mergeArraysUnique(prev.atomsPassed, next.atomsPassed),
-    atomsFailed: mergeArraysUnique(prev.atomsFailed, next.atomsFailed),
-  };
-};
 
 export interface AtomReports {
   readonly atomsIntroduced: ReadonlyArray<string>;
@@ -34,9 +20,8 @@ export interface AtomReports {
 export interface ActivityState {
   readonly uid: string;
   readonly activity: APIActivity;
+  readonly atomsInfo: APIAtomsInfo;
   readonly preloadMap: PreloadMap;
-  readonly sectionIndex: number;
-  readonly accumAtomReports: AtomReports;
 }
 
 export interface StudyState {
@@ -57,25 +42,44 @@ const preloadFilename = async (filename: string, mediaUrlPrefix: string): Promis
 const getActivityMediaFilenames = (activity: APIActivity): ReadonlySet<string> => {
   const filenames = new Set<string>();
 
-  for (const section of activity.sections) {
-    switch (section.kind) {
-      case 'tts_slides':
-        for (const slide of section.slides) {
-          filenames.add(slide.audioFn);
-          filenames.add(slide.imageFn);
-        }
-        break;
+  switch (activity.kind) {
+    case 'intro_slides':
+      for (const slide of activity.slides) {
+        switch (slide.kind) {
+          case 'audio_image':
+            filenames.add(slide.audioFn);
+            filenames.add(slide.imageFn);
+            break;
 
-      case 'qmti':
-        filenames.add(section.audioFn);
-        for (const choice of section.choices) {
-          filenames.add(choice.imageFn);
+          default:
+            throw new Error('invalid slide kind');
         }
-        break;
+      }
+      break;
 
-      default:
-        throw new Error('invalid section kind');
-    }
+    case 'review':
+      switch (activity.pres.kind) {
+        case 'audio':
+          filenames.add(activity.pres.audioFn);
+          break;
+
+        default:
+          throw new Error('invalid pres kind');
+      }
+      switch (activity.ques.kind) {
+        case 'choice_image':
+          for (const option of activity.ques.options) {
+            filenames.add(option.imageFn);
+          }
+          break;
+
+        default:
+          throw new Error('invalid ques kind');
+      }
+      break;
+
+    default:
+      throw new Error('invalid activity kind');
   }
 
   return filenames;
@@ -101,6 +105,7 @@ const loadActivity = async (dispatch: ThunkDispatch<RootState, unknown, UnknownA
 
   dispatch(actionStudyLoadActivity({
     activity: pickActivityResp.activity,
+    atomsInfo: pickActivityResp.atomsInfo,
     preloadMap,
   }));
 }
@@ -114,7 +119,7 @@ export const thunkStudyInit = (): AppThunk => async (dispatch, getState) => {
   await loadActivity(dispatch, state.sess.sessionToken);
 };
 
-export const thunkStudyFinishedSection = (atomReports: AtomReports): AppThunk => async (dispatch, getState) => {
+export const thunkStudyFinishedActivity = (atomReports: AtomReports): AppThunk => async (dispatch, getState) => {
   const state = getState();
   if (state.type !== 'loggedIn') {
     throw new Error('invalid state');
@@ -126,54 +131,22 @@ export const thunkStudyFinishedSection = (atomReports: AtomReports): AppThunk =>
     throw new Error('invalid study state');
   }
 
-  const activityState = state.sess.page.studyState.activityState;
-  const activity = activityState.activity;
+  await apiReportResult(state.sess.sessionToken, 'es', {
+    atomsIntroduced: Array.from(atomReports.atomsIntroduced),
+    atomsExposed: Array.from(atomReports.atomsExposed),
+    atomsForgot: Array.from(atomReports.atomsForgot),
+    atomsPassed: Array.from(atomReports.atomsPassed),
+    atomsFailed: Array.from(atomReports.atomsFailed),
+  });
 
-  dispatch(actionAccumAtomReports(atomReports));
-
-  const curSectionIndex = activityState.sectionIndex;
-  const newSectionIndex = curSectionIndex + 1;
-  if (newSectionIndex >= activity.sections.length) {
-    dispatch(actionAccumAtomReports({
-      atomsIntroduced: activity.introAtoms,
-      atomsExposed: [],
-      atomsForgot: [],
-      atomsPassed: [],
-      atomsFailed: [],
-    }));
-
-    const updatedState = getState();
-    if (updatedState.type !== 'loggedIn') {
-      throw new Error('invalid state');
-    }
-    if (updatedState.sess.page.type !== 'study') {
-      throw new Error('invalid page');
-    }
-    if (updatedState.sess.page.studyState.activityState === undefined) {
-      throw new Error('invalid study state');
-    }
-    const updatedAtomReports = updatedState.sess.page.studyState.activityState.accumAtomReports;
-
-    await apiReportResult(state.sess.sessionToken, 'es', {
-      atomsIntroduced: Array.from(updatedAtomReports.atomsIntroduced),
-      atomsExposed: Array.from(updatedAtomReports.atomsExposed),
-      atomsForgot: Array.from(updatedAtomReports.atomsForgot),
-      atomsPassed: Array.from(updatedAtomReports.atomsPassed),
-      atomsFailed: Array.from(updatedAtomReports.atomsFailed),
-    });
-
-    loadActivity(dispatch, state.sess.sessionToken);
-  } else {
-    dispatch(actionGoToSection(newSectionIndex));
-  }
+  loadActivity(dispatch, state.sess.sessionToken);
 }
 
 const actionStudyLoadActivity = createAction<{
   readonly activity: APIActivity;
+  readonly atomsInfo: APIAtomsInfo;
   readonly preloadMap: PreloadMap;
 }>('studyLoadActivity');
-export const actionAccumAtomReports = createAction<AtomReports>('accumAtomReports');
-const actionGoToSection = createAction<number>('goToSection');
 
 const studyReducer = createReducer<StudyState>(initialStudyState, (builder) => {
   builder
@@ -184,40 +157,7 @@ const studyReducer = createReducer<StudyState>(initialStudyState, (builder) => {
           uid: genRandomStr64(),
           activity: action.payload.activity,
           preloadMap: action.payload.preloadMap,
-          sectionIndex: 0,
-          accumAtomReports: {
-            atomsIntroduced: [],
-            atomsExposed: [],
-            atomsForgot: [],
-            atomsPassed: [],
-            atomsFailed: [],
-          },
-        },
-      };
-    })
-    .addCase(actionGoToSection, (state, action) => {
-      if (state.activityState === undefined) {
-        return state;
-      }
-
-      return {
-        loading: false,
-        activityState: {
-          ...state.activityState,
-          sectionIndex: action.payload,
-        },
-      };
-    })
-    .addCase(actionAccumAtomReports, (state, action) => {
-      if (state.activityState === undefined) {
-        return state;
-      }
-
-      return {
-        ...state,
-        activityState: {
-          ...state.activityState,
-          accumAtomReports: combineAtomReports(state.activityState.accumAtomReports, action.payload),
+          atomsInfo: action.payload.atomsInfo,
         },
       };
     });

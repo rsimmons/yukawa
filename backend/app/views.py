@@ -84,7 +84,7 @@ def pick_activity():
     else:
         srs_data = srs.init_srs_data()
 
-    activity = srs.pick_activity(lang, srs_data, t)
+    activity, atoms_info = srs.pick_activity(lang, srs_data, t)
 
     # log_obj = {
     #     'lang': lang,
@@ -100,6 +100,7 @@ def pick_activity():
         'status': 'ok',
         'media_url_prefix': app.config['CLIP_URL_PREFIX'] + lang + '/',
         'activity': activity,
+        'atoms_info': atoms_info,
     })
 
 @app.route('/report_result', methods=['POST'])

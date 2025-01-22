@@ -1,4 +1,8 @@
 import random
+from abc import abstractmethod
+from typing import Protocol
+
+from activity import ATText, ActivityIntroSlides, ImageOption, IntroSlideAudioImage, PresAudio, QuesChoiceImage, ActivityReview
 
 def weighted_random_sample(weighted_choices, n):
     assert n <= len(weighted_choices)
@@ -24,8 +28,21 @@ def get_anno_atoms_set(anno):
             atoms.add(span['a'])
     return atoms
 
-class SimpleGenerator:
-    def __init__(self, spec):
+class Generator(Protocol):
+    @abstractmethod
+    def __init__(self, spec: dict) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate_intro_activity(self, intro_atoms: list[str], atom_due) -> ActivityIntroSlides | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate_review_activity(self, atom_due) -> tuple[ActivityReview, float] | None:
+        raise NotImplementedError
+
+class SimpleGenerator(Generator):
+    def __init__(self, spec: dict) -> None:
         self.spec = spec
 
     def _expand_section(self, section, chosen_voice_slots):
@@ -124,11 +141,11 @@ class SimpleGenerator:
             'sections': [self._expand_section(s, chosen_voice_slots) for s in self.spec['sections']],
         }
 
-    def generate_intro_activity(self, intro_atoms, atom_due):
+    def generate_intro_activity(self, intro_atoms: list[str], atom_due) -> ActivityIntroSlides | None:
         if set(intro_atoms) == set(self.spec['intro_atoms']):
             return self._expand_activity()
 
-    def generate_review_activity(self, atom_due):
+    def generate_review_activity(self, atom_due) -> tuple[ActivityReview, float] | None:
         # check if this activity tests any atoms that are due
         tested_due_count = len([ta for ta in self.spec['tested_atoms'] if atom_due.get(ta, 'untracked') == 'due'])
         if tested_due_count > 0:
@@ -136,11 +153,11 @@ class SimpleGenerator:
             if all(atom_due.get(atom_id, 'untracked') in ['due', 'not_due'] for atom_id in self.spec['req_atoms']):
                 return (self._expand_activity(), tested_due_count)
 
-class PoolGenerator:
+class PoolGenerator(Generator):
     def __init__(self, spec):
         self.spec = spec
 
-    def generate_intro_activity(self, intro_atoms, atom_due):
+    def generate_intro_activity(self, intro_atoms: list[str], atom_due) -> ActivityIntroSlides | None:
         if not self.spec['provide_intros']:
             return None
 
@@ -154,42 +171,34 @@ class PoolGenerator:
             item_reqs_met = all((atom_id in intro_atoms) or (atom_due.get(atom_id, 'untracked') == 'not_due') for atom_id in item_atoms)
 
             if item_covers_intros and item_reqs_met:
-                activity = {}
-
-                activity['intro_atoms'] = intro_atoms
-                activity['req_atoms'] = []
-                activity['tested_atoms'] = []
-
-                activity['sections'] = []
-
-                slides_section = {
-                    'kind': 'tts_slides',
-                    'slides': [],
-                }
-
                 rep = min(3, len(item['images_full']))
 
                 sampled_images = random.sample(item['images_full'], rep)
                 sampled_audios = random.sample(list(item['audio'].values()), rep)
 
-                for i, (audio_fn, image_fn) in enumerate(zip(sampled_audios, sampled_images)):
-                    slide = {
-                        'text': item['text'],
-                        'trans': item['trans'],
-                        'anno': item['anno'],
-                        'audio_fn': audio_fn,
-                        'image_fn': image_fn,
-                    }
-                    slides_section['slides'].append(slide)
+                slides: list[IntroSlideAudioImage] = []
+                for audio_fn, image_fn in zip(sampled_audios, sampled_images):
+                    slides.append(IntroSlideAudioImage(
+                        attext=ATText(
+                            text=item['text'],
+                            trans=item['trans'],
+                            anno=item['anno'],
+                        ),
+                        audio_fn=audio_fn,
+                        image_fn=image_fn,
+                    ))
 
-                activity['sections'].append(slides_section)
-
-                return activity
+                return ActivityIntroSlides(
+                    atoms_introduced=intro_atoms,
+                    atoms_exposed=[],
+                    atoms_tested=[],
+                    slides=slides,
+                )
 
         return None
 
-    def generate_review_activity(self, atom_due):
-        candidates = [] # list of (score, activity)
+    def generate_review_activity(self, atom_due) -> tuple[ActivityReview, float] | None:
+        candidates: list[tuple[float, ActivityReview]] = []
         for item in self.spec['items']:
             # calculate how many due atoms would be tested by this item
             item_atoms = get_anno_atoms_set(item['anno'])
@@ -200,29 +209,14 @@ class PoolGenerator:
             if tested_due_count > 0:
                 # check if all atoms needed by this activity are known or due for review
                 if all(atom_due.get(atom_id, 'untracked') in ['due', 'not_due'] for atom_id in item_req_atoms):
-                    activity = {}
+                    picked_options = []
 
-                    activity['intro_atoms'] = []
-                    activity['req_atoms'] = []
-                    activity['tested_atoms'] = list(item_tested_atoms)
-
-                    activity['sections'] = []
-
-                    qmti_section = {
-                        'kind': 'qmti',
-                        'text': item['text'],
-                        'trans': item['trans'],
-                        'anno': item['anno'],
-                        'tested_atoms': list(item_tested_atoms),
-                        'audio_fn': random.choice(list(item['audio'].values())),
-                    }
-
-                    picked_choices = []
-
-                    picked_choices.append({
-                        'correct': True,
-                        'image_fn': random.choice(item['images_choice']),
-                    })
+                    picked_options.append(ImageOption(
+                        correct=True,
+                        image_fn=random.choice(item['images_choice']),
+                        atoms_passed=list(item_tested_atoms),
+                        atoms_failed=[],
+                    ))
 
                     other_items = [i for i in self.spec['items'] if i != item]
                     scored_other_items = []
@@ -246,17 +240,32 @@ class PoolGenerator:
                     scored_other_items.sort(reverse=True, key=lambda x: x[0])
                     assert len(scored_other_items) >= 3
                     for score, other_item in scored_other_items[:3]:
-                        picked_choices.append({
-                            'correct': False,
-                            'image_fn': random.choice(other_item['images_choice']),
-                            'fail_atoms': list(get_anno_atoms_set(other_item['anno'])),
-                        })
+                        picked_options.append(ImageOption(
+                            correct=False,
+                            image_fn=random.choice(other_item['images_choice']),
+                            atoms_passed=[],
+                            atoms_failed=list(item_tested_atoms) + list(get_anno_atoms_set(other_item['anno'])),
+                        ))
 
-                    random.shuffle(picked_choices)
+                    random.shuffle(picked_options)
 
-                    qmti_section['choices'] = picked_choices
-
-                    activity['sections'].append(qmti_section)
+                    activity = ActivityReview(
+                        atoms_introduced=[],
+                        atoms_exposed=[],
+                        atoms_tested=list(item_tested_atoms),
+                        pres=PresAudio(
+                            attext=ATText(
+                                text=item['text'],
+                                trans=item['trans'],
+                                anno=item['anno'],
+                            ),
+                            audio_fn=random.choice(list(item['audio'].values())),
+                        ),
+                        ques=QuesChoiceImage(
+                            prompt=None,
+                            options=picked_options,
+                        ),
+                    )
 
                     candidates.append((tested_due_count, activity))
 
@@ -267,10 +276,10 @@ class PoolGenerator:
         else:
             return None
 
-GENERATOR_MAP = {
+GENERATOR_MAP: dict[str, type[Generator]] = {
     'simple': SimpleGenerator,
     'pool': PoolGenerator,
 }
 
-def construct_generator(spec):
+def construct_generator(spec) -> Generator:
     return GENERATOR_MAP[spec['kind']](spec)
